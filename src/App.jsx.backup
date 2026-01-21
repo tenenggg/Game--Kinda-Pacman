@@ -1,0 +1,2062 @@
+import { useEffect, useState } from 'react'
+import PhaserLayer from './phaser/PhaserLayer.jsx'
+import useSoundManager from './hooks/useSoundManager'
+import { objectives, EASTER_EGGS, easterEggMap, MATH_WALL_GATES } from './data/gameData'
+import { isWalkable, getTileAt, isMathWall, getClosestGate, getMathWallQuiz } from './utils/gameUtils'
+import Dashboard from './components/Dashboard'
+import GridRenderer from './components/GridRenderer'
+import './App.css'
+
+  // Initialize AudioContext after user interaction
+  const initAudio = () => {
+    if (!audioContextRef.current) {
+      audioContextRef.current = new (window.AudioContext || window.webkitAudioContext)()
+    }
+  }
+
+  // Play a short rising tone for game start
+  const playStartSound = () => {
+    initAudio()
+    const ctx = audioContextRef.current
+    const osc = ctx.createOscillator()
+    const gain = ctx.createGain()
+
+    osc.connect(gain)
+    gain.connect(ctx.destination)
+
+    osc.frequency.setValueAtTime(400, ctx.currentTime)
+    osc.frequency.exponentialRampToValueAtTime(800, ctx.currentTime + 0.3)
+    
+    gain.gain.setValueAtTime(0.15, ctx.currentTime)
+    gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.3)
+
+    osc.start(ctx.currentTime)
+    osc.stop(ctx.currentTime + 0.3)
+  }
+
+  // Start background music - looping melody like retro games
+  const startBackgroundSound = () => {
+    initAudio()
+    const ctx = audioContextRef.current
+
+    // Stop existing background sound if any
+    stopBackgroundSound()
+
+    // Create a simple melodic pattern that loops
+    const playMelodyLoop = () => {
+      const melody = [
+        { freq: 262, duration: 0.3 }, // C4
+        { freq: 330, duration: 0.3 }, // E4
+        { freq: 392, duration: 0.3 }, // G4
+        { freq: 330, duration: 0.3 }, // E4
+        { freq: 294, duration: 0.3 }, // D4
+        { freq: 330, duration: 0.3 }, // E4
+        { freq: 262, duration: 0.3 }, // C4
+        { freq: 247, duration: 0.3 }, // B3
+      ]
+
+      let time = ctx.currentTime
+      melody.forEach((note) => {
+        const osc = ctx.createOscillator()
+        const gain = ctx.createGain()
+
+        osc.type = 'square'
+        osc.frequency.setValueAtTime(note.freq, time)
+        
+        gain.gain.setValueAtTime(0, time)
+        gain.gain.linearRampToValueAtTime(0.04, time + 0.01)
+        gain.gain.linearRampToValueAtTime(0.02, time + note.duration * 0.7)
+        gain.gain.linearRampToValueAtTime(0, time + note.duration)
+
+        osc.connect(gain)
+        gain.connect(ctx.destination)
+
+        osc.start(time)
+        osc.stop(time + note.duration)
+
+        time += note.duration
+      })
+    }
+
+    // Play the melody loop immediately and then repeat every 2.4 seconds
+    playMelodyLoop()
+    bgmIntervalRef.current = setInterval(playMelodyLoop, 2400)
+  }
+
+  // Stop background sound
+  const stopBackgroundSound = () => {
+    if (bgmIntervalRef.current) {
+      clearInterval(bgmIntervalRef.current)
+      bgmIntervalRef.current = null
+    }
+    if (backgroundOscillatorRef.current) {
+      try {
+        backgroundOscillatorRef.current.stop()
+      } catch (e) {
+        // Already stopped
+      }
+      backgroundOscillatorRef.current = null
+      backgroundGainRef.current = null
+    }
+  }
+
+  // Play short click/step sound for movement (50-100ms)
+  const playMoveSound = () => {
+    if (!audioContextRef.current) return
+    const ctx = audioContextRef.current
+    const osc = ctx.createOscillator()
+    const gain = ctx.createGain()
+
+    osc.type = 'square'
+    osc.frequency.setValueAtTime(200, ctx.currentTime)
+    
+    gain.gain.setValueAtTime(0.05, ctx.currentTime)
+    gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.05)
+
+    osc.connect(gain)
+    gain.connect(ctx.destination)
+
+    osc.start(ctx.currentTime)
+    osc.stop(ctx.currentTime + 0.05)
+  }
+
+  // Play ascending notes for win
+  const playWinSound = () => {
+    if (!audioContextRef.current) return
+    const ctx = audioContextRef.current
+    
+    const notes = [523, 659, 784, 1047] // C5, E5, G5, C6
+    notes.forEach((freq, index) => {
+      const osc = ctx.createOscillator()
+      const gain = ctx.createGain()
+
+      osc.frequency.setValueAtTime(freq, ctx.currentTime)
+      gain.gain.setValueAtTime(0.1, ctx.currentTime + index * 0.15)
+      gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + index * 0.15 + 0.2)
+
+      osc.connect(gain)
+      gain.connect(ctx.destination)
+
+      osc.start(ctx.currentTime + index * 0.15)
+      osc.stop(ctx.currentTime + index * 0.15 + 0.2)
+    })
+  }
+
+  // Play descending/low tone for lose
+  const playLoseSound = () => {
+    if (!audioContextRef.current) return
+    const ctx = audioContextRef.current
+    
+    const osc = ctx.createOscillator()
+    const gain = ctx.createGain()
+
+    osc.frequency.setValueAtTime(400, ctx.currentTime)
+    osc.frequency.exponentialRampToValueAtTime(100, ctx.currentTime + 0.5)
+    
+    gain.gain.setValueAtTime(0.15, ctx.currentTime)
+    gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.5)
+
+    osc.connect(gain)
+    gain.connect(ctx.destination)
+
+    osc.start(ctx.currentTime)
+    osc.stop(ctx.currentTime + 0.5)
+  }
+
+  // Play warning beep (short high-pitched tone)
+  const playWarningBeep = () => {
+    if (!audioContextRef.current) return
+    const ctx = audioContextRef.current
+    
+    const osc = ctx.createOscillator()
+    const gain = ctx.createGain()
+
+    osc.type = 'sine'
+    osc.frequency.setValueAtTime(880, ctx.currentTime) // A5 note
+    
+    gain.gain.setValueAtTime(0.08, ctx.currentTime)
+    gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.1)
+
+    osc.connect(gain)
+    gain.connect(ctx.destination)
+
+    osc.start(ctx.currentTime)
+    osc.stop(ctx.currentTime + 0.1)
+  }
+
+  // Play positive investment sound (advantage checkpoint)
+  const playGoodInvestSound = () => {
+    if (!audioContextRef.current) return
+    const ctx = audioContextRef.current
+    
+    // Two ascending notes for positive feedback
+    const notes = [523, 659] // C5, E5
+    notes.forEach((freq, index) => {
+      const osc = ctx.createOscillator()
+      const gain = ctx.createGain()
+
+      osc.frequency.setValueAtTime(freq, ctx.currentTime)
+      gain.gain.setValueAtTime(0.12, ctx.currentTime + index * 0.1)
+      gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + index * 0.1 + 0.15)
+
+      osc.connect(gain)
+      gain.connect(ctx.destination)
+
+      osc.start(ctx.currentTime + index * 0.1)
+      osc.stop(ctx.currentTime + index * 0.1 + 0.15)
+    })
+  }
+
+  // Play negative investment sound (disadvantage checkpoint)
+  const playBadInvestSound = () => {
+    if (!audioContextRef.current) return
+    const ctx = audioContextRef.current
+    
+    // Two descending notes for negative feedback
+    const notes = [392, 294] // G4, D4
+    notes.forEach((freq, index) => {
+      const osc = ctx.createOscillator()
+      const gain = ctx.createGain()
+
+      osc.type = 'triangle'
+      osc.frequency.setValueAtTime(freq, ctx.currentTime)
+      gain.gain.setValueAtTime(0.12, ctx.currentTime + index * 0.1)
+      gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + index * 0.1 + 0.15)
+
+      osc.connect(gain)
+      gain.connect(ctx.destination)
+
+      osc.start(ctx.currentTime + index * 0.1)
+      osc.stop(ctx.currentTime + index * 0.1 + 0.15)
+    })
+  }
+
+  // Play neutral investment sound (mixed/neutral checkpoint)
+  const playNeutralInvestSound = () => {
+    if (!audioContextRef.current) return
+    const ctx = audioContextRef.current
+    
+    // Single sustained note for neutral feedback
+    const osc = ctx.createOscillator()
+    const gain = ctx.createGain()
+
+    osc.type = 'sine'
+    osc.frequency.setValueAtTime(440, ctx.currentTime) // A4 note
+    
+    gain.gain.setValueAtTime(0.1, ctx.currentTime)
+    gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.2)
+
+    osc.connect(gain)
+    gain.connect(ctx.destination)
+
+    osc.start(ctx.currentTime)
+    osc.stop(ctx.currentTime + 0.2)
+  }
+
+  // Play skip sound (short blip)
+  const playSkipSound = () => {
+    if (!audioContextRef.current) return
+    const ctx = audioContextRef.current
+    
+    const osc = ctx.createOscillator()
+    const gain = ctx.createGain()
+
+    osc.type = 'square'
+    osc.frequency.setValueAtTime(330, ctx.currentTime) // E4 note
+    
+    gain.gain.setValueAtTime(0.08, ctx.currentTime)
+    gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.08)
+
+    osc.connect(gain)
+    gain.connect(ctx.destination)
+
+    osc.start(ctx.currentTime)
+    osc.stop(ctx.currentTime + 0.08)
+  }
+
+  return {
+    playStartSound,
+    startBackgroundSound,
+    stopBackgroundSound,
+    playMoveSound,
+    playWinSound,
+    playLoseSound,
+    playWarningBeep,
+    playGoodInvestSound,
+    playBadInvestSound,
+    playNeutralInvestSound,
+    playSkipSound,
+  }
+}
+
+// 30x30 grid with challenging maze layout and 15 checkpoints
+const MAP_WIDTH = 30
+const MAP_HEIGHT = 37
+
+// Math Wall barrier cells - creates continuous walls dividing the grid into quadrants
+// Horizontal barrier at row 18 (middle of 0-36)
+// Vertical barrier at column 15 (middle of 0-29)
+const MATH_WALL_CELLS = new Set()
+
+// Populate Math Wall cells for horizontal barrier (row 18)
+for (let x = 0; x < MAP_WIDTH; x++) {
+  MATH_WALL_CELLS.add(`${x},18`)
+}
+
+// Populate Math Wall cells for vertical barrier (column 15)
+for (let y = 0; y < MAP_HEIGHT; y++) {
+  MATH_WALL_CELLS.add(`15,${y}`)
+}
+
+// Math Wall "gates" - positions where player can solve the puzzle to unlock passage
+// 16 gates total (14 unique questions + 2 repeats)
+const MATH_WALL_GATES = [
+  // Horizontal barrier gates (row 18) - 8 gates
+  { x: 3, y: 18, id: 'gate-h1', dir: 'horizontal' },
+  { x: 7, y: 18, id: 'gate-h2', dir: 'horizontal' },
+  { x: 10, y: 18, id: 'gate-h3', dir: 'horizontal' },
+  { x: 13, y: 18, id: 'gate-h4', dir: 'horizontal' },
+  { x: 17, y: 18, id: 'gate-h5', dir: 'horizontal' },
+  { x: 20, y: 18, id: 'gate-h6', dir: 'horizontal' },
+  { x: 22, y: 18, id: 'gate-h7', dir: 'horizontal' },
+  { x: 26, y: 18, id: 'gate-h8', dir: 'horizontal' },
+  
+  // Vertical barrier gates (column 15) - 8 gates
+  { x: 15, y: 3, id: 'gate-v1', dir: 'vertical' },
+  { x: 15, y: 6, id: 'gate-v2', dir: 'vertical' },
+  { x: 15, y: 9, id: 'gate-v3', dir: 'vertical' },
+  { x: 15, y: 12, id: 'gate-v4', dir: 'vertical' },
+  { x: 15, y: 18, id: 'gate-v5', dir: 'vertical' },
+  { x: 15, y: 20, id: 'gate-v6', dir: 'vertical' },
+  { x: 15, y: 23, id: 'gate-v7', dir: 'vertical' },
+  { x: 15, y: 26, id: 'gate-v8', dir: 'vertical' },
+]
+
+// Hardcoded multiple-choice questions for each Math Wall gate
+// 14 unique questions covering Basic, Financial+OSH, and Hard topics
+const MATH_WALL_QUIZZES = {
+  // BASIC QUESTIONS (8)
+  'gate-h1': {
+    objective: 'Choose the best use of company funds.',
+    question: 'A company has RM1,000. What is the best way to use it?',
+    options: ['Buy safety equipment', 'Buy toys', 'Buy snacks only', 'Keep it unused'],
+    correctIndex: 0,
+  },
+  'gate-h2': {
+    objective: 'Identify accident-related costs.',
+    question: 'If a worker gets injured, what money does the company need to pay?',
+    options: ['Movie tickets', 'Medical bills', 'Holiday gifts', 'Phone bills'],
+    correctIndex: 1,
+  },
+  'gate-h3': {
+    objective: 'Recognize long-term cost savings.',
+    question: 'Which choice helps save money in the long term?',
+    options: [
+      'Ignoring safety rules',
+      'Fixing safety problems early',
+      'Waiting for accidents',
+      'Paying fines',
+    ],
+    correctIndex: 1,
+  },
+  'gate-h4': {
+    objective: 'Understand accident costs.',
+    question: 'An accident happens at work. Which cost is MOST likely?',
+    options: ['Extra profit', 'Lower expenses', 'Free bonus', 'Repair and medical costs'],
+    correctIndex: 3,
+  },
+  'gate-h5': {
+    objective: 'Evaluate safety equipment value.',
+    question: 'Why is buying safety equipment a good financial decision?',
+    options: [
+      'It increases accidents',
+      'It saves money by preventing injuries',
+      'It slows down work',
+      'It wastes company money',
+    ],
+    correctIndex: 1,
+  },
+  'gate-h6': {
+    objective: 'Recognize fine consequences.',
+    question: 'What happens if a company must pay a fine for unsafe work?',
+    options: ['Money is lost', 'More money saved', 'Workers earn more', 'Prices go down'],
+    correctIndex: 0,
+  },
+  'gate-h7': {
+    objective: 'Compare cost options.',
+    question: 'Which option costs LESS overall?',
+    options: [
+      'Paying hospital bills',
+      'Paying compensation',
+      'Spending money on safety early',
+      'Repairing damaged machines',
+    ],
+    correctIndex: 2,
+  },
+  'gate-h8': {
+    objective: 'Understand safe workplace economics.',
+    question: 'A safe workplace usually means ______.',
+    options: ['Higher spending', 'More accidents', 'Less productivity', 'Lower long-term costs'],
+    correctIndex: 3,
+  },
+  
+  // FINANCIAL + OSH QUESTIONS (6 used)
+  'gate-v1': {
+    objective: 'Understand OSH investment purpose.',
+    question: 'Why do companies spend money on Occupational Safety and Health (OSH)?',
+    options: [
+      'To waste company money',
+      'To keep workers safe and avoid accidents',
+      'To make work slower',
+      'To punish workers',
+    ],
+    correctIndex: 1,
+  },
+  'gate-v2': {
+    objective: 'Identify financial accident impacts.',
+    question: 'What can happen financially if a workplace accident occurs?',
+    options: [
+      'The company earns more profit',
+      'No effect at all',
+      'Medical bills and compensation costs increase',
+      'Workers get free holidays',
+    ],
+    correctIndex: 2,
+  },
+  'gate-v3': {
+    objective: 'Understand safety equipment benefits.',
+    question: 'Buying safety equipment helps a company to ______.',
+    options: ['Reduce accident costs', 'Lose money', 'Increase danger', 'Close the company'],
+    correctIndex: 0,
+  },
+  'gate-v4': {
+    objective: 'Identify OSH costs.',
+    question: 'Which cost is an example of an OSH-related cost?',
+    options: ['Office decoration', 'Safety helmet and gloves', 'Staff birthday cake', 'Free Wi-Fi'],
+    correctIndex: 1,
+  },
+  'gate-v5': {
+    objective: 'Evaluate safety training value.',
+    question: 'Why is training workers on safety good for company finances?',
+    options: [
+      'It makes workers sleepy',
+      'It increases accidents',
+      'It reduces mistakes and injury costs',
+      'It wastes working time',
+    ],
+    correctIndex: 2,
+  },
+  'gate-v6': {
+    objective: 'Understand OSH rule consequences.',
+    question: 'What happens if a company ignores OSH rules?',
+    options: [
+      'The company saves money',
+      'The company may pay fines or compensation',
+      'Workers become richer',
+      'Nothing happens',
+    ],
+    correctIndex: 1,
+  },
+  
+  // HARD QUESTIONS (2 used, 2 repeats from above)
+  'gate-v7': {
+    objective: 'Identify equity without fixed interest.',
+    question:
+      'Which investment gives the holder ownership in a company but does NOT guarantee fixed yearly interest?',
+    options: ['Bond', 'Preferred stock', 'Promissory note', 'Common stock'],
+    correctIndex: 3,
+  },
+  'gate-v8': {
+    objective: 'Match investment to investor goals.',
+    question:
+      'An investor wants regular income with priority over common shareholders but does NOT want ownership rights in company decisions. Which investment BEST matches this goal?',
+    options: ['Bond', 'Preferred stock', 'Common stock', 'Promissory note'],
+    correctIndex: 1,
+  },
+  
+  default: {
+    objective: 'Review the core facts about all three securities.',
+    question: 'Which statement requires the MOST accurate understanding of all three securities?',
+    options: [
+      'Bonds and preferred stocks both represent ownership',
+      'Preferred stocks guarantee company ownership',
+      'Bonds promise fixed interest until maturity',
+      'Common stocks pay fixed interest yearly',
+    ],
+    correctIndex: 2,
+  },
+}
+
+const factoryMap = [
+  // Row 0
+  ['W', 'W', 'W', 'W', 'W', 'W', 'W', 'W', 'W', 'W', 'W', 'W', 'W', 'W', 'W', 'W', 'W', 'W', 'W', 'W', 'W', 'W', 'W', 'W', 'W', 'W', 'W', 'W', 'W', 'W'],
+  // Row 1
+  ['W', 'F', 'F', 'W', 'F', 'F', 'W', 'F', 'F', 'F', 'F', 'W', 'F', 'F', 'F', 'W', 'F', 'F', 'W', 'F', 'F', 'F', 'F', 'W', 'F', 'F', 'F', 'F', 'F', 'W'],
+  // Row 2
+  ['W', 'F', 'W', 'W', 'F', 'W', 'W', 'F', 'W', 'W', 'F', 'W', 'F', 'W', 'F', 'W', 'F', 'W', 'W', 'F', 'W', 'W', 'F', 'W', 'F', 'W', 'W', 'F', 'F', 'W'],
+  // Row 3
+  ['W', 'F', 'W', 'F', 'F', 'F', 'F', 'F', 'W', 'G1', 'F', 'W', 'F', 'W', 'F', 'W', 'F', 'F', 'F', 'F', 'W', 'F', 'F', 'W', 'F', 'W', 'F', 'W', 'F', 'W'],
+  // Row 4
+  ['W', 'F', 'W', 'W', 'W', 'F', 'W', 'F', 'W', 'W', 'F', 'W', 'F', 'W', 'F', 'W', 'W', 'W', 'F', 'W', 'W', 'F', 'W', 'W', 'F', 'W', 'F', 'W', 'F', 'W'],
+  // Row 5
+  ['W', 'F', 'F', 'F', 'F', 'F', 'W', 'F', 'F', 'F', 'F', 'W', 'F', 'W', 'F', 'F', 'F', 'F', 'F', 'F', 'F', 'F', 'F', 'F', 'F', 'W', 'F', 'F', 'F', 'W'],
+  // Row 6
+  ['W', 'W', 'W', 'F', 'W', 'W', 'W', 'F', 'W', 'W', 'F', 'W', 'F', 'W', 'W', 'F', 'W', 'W', 'W', 'F', 'W', 'W', 'W', 'F', 'W', 'W', 'F', 'W', 'F', 'W'],
+  // Row 7
+  ['W', 'F', 'F', 'F', 'F', 'F', 'F', 'F', 'W', 'R1', 'F', 'W', 'F', 'F', 'F', 'F', 'F', 'F', 'F', 'F', 'W', 'F', 'F', 'F', 'F', 'F', 'F', 'W', 'F', 'W'],
+  // Row 8
+  ['W', 'F', 'W', 'W', 'W', 'W', 'F', 'W', 'W', 'W', 'F', 'W', 'F', 'W', 'W', 'W', 'F', 'W', 'W', 'F', 'W', 'F', 'W', 'W', 'F', 'W', 'F', 'W', 'F', 'W'],
+  // Row 9
+  ['W', 'F', 'W', 'G2', 'F', 'F', 'F', 'F', 'F', 'F', 'F', 'W', 'F', 'F', 'F', 'F', 'F', 'W', 'Y1', 'F', 'W', 'F', 'W', 'F', 'F', 'F', 'F', 'W', 'F', 'W'],
+  // Row 10
+  ['W', 'F', 'W', 'W', 'W', 'W', 'W', 'F', 'W', 'W', 'F', 'W', 'F', 'W', 'W', 'W', 'F', 'W', 'W', 'W', 'W', 'F', 'W', 'W', 'W', 'F', 'W', 'W', 'F', 'W'],
+  // Row 11
+  ['W', 'F', 'F', 'F', 'F', 'F', 'F', 'F', 'F', 'F', 'F', 'W', 'F', 'F', 'F', 'F', 'F', 'F', 'F', 'F', 'F', 'F', 'F', 'F', 'F', 'F', 'F', 'F', 'F', 'W'],
+  // Row 12
+  ['W', 'W', 'F', 'W', 'W', 'F', 'W', 'W', 'F', 'W', 'W', 'W', 'F', 'W', 'W', 'F', 'W', 'W', 'F', 'W', 'W', 'W', 'F', 'W', 'W', 'F', 'W', 'W', 'F', 'W'],
+  // Row 13
+  ['W', 'F', 'F', 'F', 'F', 'F', 'F', 'F', 'F', 'F', 'F', 'F', 'F', 'F', 'F', 'F', 'W', 'Y2', 'F', 'F', 'F', 'F', 'F', 'F', 'F', 'F', 'W', 'F', 'F', 'W'],
+  // Row 14
+  ['W', 'F', 'W', 'W', 'W', 'F', 'W', 'W', 'W', 'F', 'W', 'W', 'W', 'F', 'W', 'W', 'W', 'W', 'W', 'F', 'W', 'W', 'W', 'F', 'W', 'W', 'W', 'F', 'W', 'W'],
+  // Row 15
+  ['W', 'F', 'W', 'R2', 'F', 'F', 'F', 'F', 'F', 'F', 'F', 'F', 'F', 'F', 'F', 'F', 'F', 'F', 'F', 'F', 'F', 'F', 'F', 'F', 'F', 'F', 'F', 'F', 'F', 'W'],
+  // Row 16
+  ['W', 'F', 'W', 'W', 'W', 'W', 'F', 'W', 'W', 'F', 'W', 'W', 'W', 'F', 'W', 'W', 'F', 'W', 'W', 'W', 'F', 'W', 'W', 'W', 'F', 'W', 'W', 'F', 'W', 'W'],
+  // Row 17
+  ['W', 'F', 'F', 'W', 'F', 'F', 'F', 'W', 'F', 'F', 'F', 'F', 'W', 'F', 'F', 'F', 'F', 'W', 'F', 'F', 'F', 'F', 'F', 'W', 'F', 'F', 'F', 'F', 'F', 'W'],
+  // Row 18 (Math Wall path row)
+  ['W', 'F', 'F', 'F', 'F', 'F', 'F', 'F', 'F', 'F', 'F', 'F', 'F', 'F', 'F', 'F', 'F', 'F', 'F', 'F', 'F', 'F', 'F', 'F', 'F', 'F', 'F', 'F', 'F', 'W'],
+  // Row 19
+  ['W', 'F', 'F', 'F', 'F', 'F', 'F', 'F', 'W', 'Y3', 'F', 'F', 'F', 'F', 'F', 'F', 'W', 'G4', 'F', 'F', 'F', 'W', 'F', 'F', 'F', 'F', 'F', 'F', 'F', 'W'],
+  // Row 20
+  ['W', 'F', 'W', 'W', 'W', 'F', 'W', 'W', 'W', 'W', 'W', 'F', 'W', 'W', 'W', 'F', 'W', 'W', 'W', 'F', 'W', 'W', 'F', 'W', 'W', 'W', 'F', 'W', 'F', 'W'],
+  // Row 21
+  ['W', 'F', 'W', 'F', 'F', 'F', 'F', 'F', 'F', 'F', 'F', 'F', 'F', 'F', 'F', 'F', 'F', 'F', 'F', 'F', 'F', 'F', 'F', 'W', 'F', 'F', 'F', 'W', 'F', 'W'],
+  // Row 22
+  ['W', 'F', 'W', 'W', 'W', 'W', 'F', 'W', 'W', 'W', 'F', 'W', 'W', 'F', 'W', 'W', 'W', 'W', 'F', 'W', 'W', 'W', 'F', 'W', 'F', 'W', 'F', 'W', 'F', 'W'],
+  // Row 23
+  ['W', 'F', 'F', 'F', 'F', 'F', 'F', 'F', 'F', 'F', 'F', 'F', 'F', 'F', 'F', 'F', 'F', 'F', 'F', 'F', 'F', 'F', 'F', 'W', 'F', 'W', 'F', 'W', 'Y5', 'W'],
+  // Row 24
+  ['W', 'W', 'W', 'F', 'W', 'W', 'W', 'F', 'W', 'W', 'W', 'W', 'F', 'W', 'W', 'W', 'F', 'W', 'W', 'W', 'F', 'W', 'W', 'W', 'F', 'W', 'F', 'W', 'F', 'W'],
+  // Row 25
+  ['W', 'R3', 'F', 'F', 'F', 'F', 'F', 'F', 'F', 'F', 'F', 'F', 'F', 'F', 'F', 'F', 'F', 'F', 'F', 'F', 'F', 'F', 'F', 'F', 'F', 'F', 'R5', 'W', 'F', 'W'],
+  // Row 26
+  ['W', 'W', 'W', 'F', 'W', 'W', 'W', 'F', 'W', 'W', 'F', 'W', 'W', 'W', 'F', 'W', 'W', 'F', 'W', 'W', 'W', 'F', 'W', 'W', 'W', 'F', 'W', 'W', 'F', 'W'],
+  // Row 27
+  ['W', 'G5', 'F', 'F', 'F', 'F', 'F', 'F', 'W', 'F', 'F', 'F', 'F', 'F', 'F', 'F', 'F', 'F', 'F', 'W', 'F', 'F', 'F', 'F', 'F', 'F', 'W', 'F', 'F', 'W'],
+  // Row 28
+  ['W', 'W', 'W', 'W', 'F', 'W', 'W', 'W', 'W', 'W', 'W', 'F', 'W', 'W', 'W', 'F', 'W', 'W', 'W', 'W', 'W', 'W', 'F', 'W', 'W', 'W', 'W', 'W', 'F', 'W'],
+  // Row 29
+  ['W', 'F', 'W', 'F', 'W', 'F', 'F', 'F', 'F', 'W', 'F', 'F', 'W', 'F', 'W', 'F', 'F', 'F', 'W', 'F', 'F', 'W', 'F', 'F', 'F', 'W', 'F', 'F', 'F', 'W'],
+  // Row 30
+  ['W', 'F', 'W', 'F', 'F', 'F', 'F', 'W', 'F', 'F', 'F', 'F', 'F', 'W', 'F', 'F', 'F', 'W', 'F', 'F', 'F', 'F', 'F', 'W', 'F', 'F', 'F', 'W', 'F', 'W'],
+  // Row 31
+  ['W', 'F', 'W', 'W', 'W', 'F', 'W', 'W', 'W', 'F', 'W', 'W', 'F', 'F', 'F', 'W', 'W', 'W', 'F', 'W', 'W', 'W', 'F', 'W', 'W', 'F', 'W', 'W', 'F', 'W'],
+  // Row 32
+  ['W', 'F', 'W', 'F', 'G3', 'F', 'W', 'F', 'F', 'Y4', 'F', 'W', 'F', 'F', 'F', 'F', 'W', 'F', 'F', 'F', 'F', 'W', 'F', 'F', 'F', 'F', 'W', 'F', 'F', 'W'],
+  // Row 33
+  ['W', 'F', 'W', 'F', 'W', 'W', 'W', 'F', 'W', 'W', 'F', 'W', 'F', 'W', 'W', 'F', 'W', 'W', 'F', 'W', 'W', 'W', 'R4', 'W', 'F', 'W', 'F', 'W', 'F', 'W'],
+  // Row 34
+  ['W', 'F', 'F', 'F', 'F', 'F', 'F', 'F', 'W', 'F', 'F', 'F', 'F', 'F', 'F', 'F', 'F', 'F', 'F', 'F', 'F', 'F', 'F', 'W', 'G6', 'F', 'F', 'F', 'F', 'W'],
+  // Row 35
+  ['W', 'W', 'W', 'F', 'W', 'W', 'W', 'F', 'W', 'W', 'F', 'W', 'W', 'W', 'F', 'W', 'W', 'F', 'W', 'W', 'F', 'W', 'W', 'W', 'F', 'W', 'W', 'F', 'W', 'W'],
+  // Row 36 - bottom border
+  ['W', 'W', 'W', 'W', 'W', 'W', 'W', 'W', 'W', 'W', 'W', 'W', 'W', 'W', 'W', 'W', 'W', 'W', 'W', 'W', 'W', 'W', 'W', 'W', 'W', 'W', 'W', 'W', 'W', 'W'],
+]
+
+// Easter Egg checkpoints (hidden, blink every 10 seconds)
+const EASTER_EGGS = [
+  { x: 5, y: 25, id: 'egg-stop', type: 'stop-enemy', name: '🛑 Enemy Freeze', description: 'Freeze the enemy for 15 seconds' },
+  { x: 28, y: 34, id: 'egg-win', type: 'instant-win', name: '🎊 Instant Win', description: 'Win the game immediately!' },
+  { x: 8, y: 32, id: 'egg-freeze', type: 'freeze-player', name: '❄️ Player Freeze', description: 'You cannot move for 10 seconds' },
+  { x: 22, y: 5, id: 'egg-rick', type: 'rick-roll', name: '🎬 Mystery Box', description: 'Opens a surprise!' },
+]
+
+const easterEggMap = new Map(EASTER_EGGS.map(egg => [`${egg.x},${egg.y}`, egg]))
+
+// Checkpoint types: G (Green/Advantage), R (Red/Disadvantage), Y (Yellow/Neutral)
+const objectives = {
+  // GREEN CHECKPOINTS (Advantage)
+  G1: {
+    id: 'G1',
+    type: 'advantage',
+    name: '🛡️ PPE Station',
+    description: 'Invest in personal protective equipment for workers.',
+    cost: 2000,
+    safetyChange: +6,
+    accidentRiskChange: -1,
+    budgetChange: 0,
+    timeChange: 0,
+  },
+  G2: {
+    id: 'G2',
+    type: 'advantage',
+    name: '📚 Training Room',
+    description: 'Run comprehensive safety training for all employees.',
+    cost: 2500,
+    safetyChange: +7,
+    accidentRiskChange: -3,
+    budgetChange: 0,
+    timeChange: 0,
+  },
+  G3: {
+    id: 'G3',
+    type: 'advantage',
+    name: '🔍 Inspection Area',
+    description: 'Regular safety inspections to catch hazards early.',
+    cost: 1800,
+    safetyChange: +4,
+    accidentRiskChange: -4,
+    budgetChange: 0,
+    timeChange: 0,
+  },
+  G4: {
+    id: 'G4',
+    type: 'advantage',
+    name: '⚙️ Machine Guarding',
+    description: 'Install guards on dangerous machines.',
+    cost: 1500,
+    safetyChange: +5,
+    accidentRiskChange: -2,
+    budgetChange: 0,
+    timeChange: 0,
+  },
+  G5: {
+    id: 'G5',
+    type: 'advantage',
+    name: '🚨 Emergency System',
+    description: 'Upgrade emergency alert and evacuation system.',
+    cost: 3000,
+    safetyChange: +9,
+    accidentRiskChange: -5,
+    budgetChange: 0,
+    timeChange: 0,
+  },
+  G6: {
+    id: 'G6',
+    type: 'advantage',
+    name: '💰 Safety Grant',
+    description: 'Receive government safety improvement grant.',
+    cost: 0,
+    safetyChange: +3,
+    accidentRiskChange: 0,
+    budgetChange: +1000,
+    timeChange: +3,
+  },
+  
+  // RED CHECKPOINTS (Disadvantage)
+  R1: {
+    id: 'R1',
+    type: 'disadvantage',
+    name: '⏰ Overtime Push',
+    description: 'Force workers to meet tight deadlines with longer hours.',
+    cost: 1000,
+    safetyChange: -8,
+    accidentRiskChange: +18,
+    budgetChange: 0,
+    timeChange: 0,
+  },
+  R2: {
+    id: 'R2',
+    type: 'disadvantage',
+    name: '✂️ Budget Cuts',
+    description: 'Reduce maintenance spending to save money.',
+    cost: 500,
+    safetyChange: -10,
+    accidentRiskChange: +20,
+    budgetChange: 0,
+    timeChange: 0,
+  },
+  R3: {
+    id: 'R3',
+    type: 'disadvantage',
+    name: '❌ Skip Inspections',
+    description: 'Cancel scheduled safety inspections.',
+    cost: 300,
+    safetyChange: -5,
+    accidentRiskChange: +25,
+    budgetChange: 0,
+    timeChange: 0,
+  },
+  R4: {
+    id: 'R4',
+    type: 'disadvantage',
+    name: '👥 Reduce Staffing',
+    description: 'Cut the safety team to reduce overhead.',
+    cost: 800,
+    safetyChange: -12,
+    accidentRiskChange: +22,
+    budgetChange: 0,
+    timeChange: 0,
+  },
+  R5: {
+    id: 'R5',
+    type: 'disadvantage',
+    name: '🔇 Ignore Warnings',
+    description: 'Ignore worker safety complaints to avoid delays.',
+    cost: 200,
+    safetyChange: -8,
+    accidentRiskChange: +28,
+    budgetChange: 0,
+    timeChange: 0,
+  },
+  
+  // YELLOW CHECKPOINTS (Neutral/Mixed)
+  Y1: {
+    id: 'Y1',
+    type: 'neutral',
+    name: '🔄 Process Update',
+    description: 'Modernize procedures - risky but potentially beneficial.',
+    cost: 2000,
+    safetyChange: +3,
+    accidentRiskChange: +8,
+    budgetChange: 0,
+    timeChange: 0,
+  },
+  Y2: {
+    id: 'Y2',
+    type: 'neutral',
+    name: '⚡ Quick Fix',
+    description: 'Fast temporary solution to safety issues.',
+    cost: 1000,
+    safetyChange: +2,
+    accidentRiskChange: +6,
+    budgetChange: 0,
+    timeChange: +2,
+  },
+  Y3: {
+    id: 'Y3',
+    type: 'neutral',
+    name: '🎯 Emergency Drill',
+    description: 'Conduct emergency drills - takes time but improves safety.',
+    cost: 1500,
+    safetyChange: +6,
+    accidentRiskChange: 0,
+    budgetChange: 0,
+    timeChange: -5,
+  },
+  Y4: {
+    id: 'Y4',
+    type: 'neutral',
+    name: '📊 Safety Audit',
+    description: 'External audit reveals issues and solutions.',
+    cost: 2500,
+    safetyChange: +4,
+    accidentRiskChange: +4,
+    budgetChange: 0,
+    timeChange: 0,
+  },
+  Y5: {
+    id: 'Y5',
+    type: 'neutral',
+    name: '🏥 First Aid Station',
+    description: 'Set up comprehensive first aid facilities.',
+    cost: 1200,
+    safetyChange: +4,
+    accidentRiskChange: -1,
+    budgetChange: 0,
+    timeChange: 0,
+  },
+}
+
+function App() {
+  // Initialize sound manager
+  const sound = useSoundManager()
+
+  // Game state
+  const [gameStarted, setGameStarted] = useState(false)
+  const [isPaused, setIsPaused] = useState(false)
+  const [playerPosition, setPlayerPosition] = useState({ x: 1, y: 1 })
+  const [isMoving, setIsMoving] = useState(false)
+  const [budget, setBudget] = useState(10000)
+  const [safetyScore, setSafetyScore] = useState(50)
+  const [accidentRisk, setAccidentRisk] = useState(50)
+  const [message, setMessage] = useState(
+    'Click START GAME to begin your mission!'
+  )
+  const [completedObjectives, setCompletedObjectives] = useState([])
+  const [gameStatus, setGameStatus] = useState('playing') // 'playing' | 'won' | 'lost'
+  const [timeLeft, setTimeLeft] = useState(120)
+  const [activeObjectiveId, setActiveObjectiveId] = useState(null)
+  const [checkpointFeedback, setCheckpointFeedback] = useState(null)
+  const [solvedMathWalls, setSolvedMathWalls] = useState(new Set())
+  const [easterEggVisible, setEasterEggVisible] = useState(new Set())
+  const [enemyFrozen, setEnemyFrozen] = useState(false)
+  const [playerFrozen, setPlayerFrozen] = useState(false)
+  const [easterEggCooldown, setEasterEggCooldown] = useState(new Map())
+
+  // Helper functions
+  const isInsideMap = (x, y) => x >= 0 && x < MAP_WIDTH && y >= 0 && y < MAP_HEIGHT
+  
+  // Check if a position is an unsolved Math Wall
+  const isMathWall = (x, y) => {
+    return MATH_WALL_CELLS.has(`${x},${y}`) && !solvedMathWalls.has(`${x},${y}`)
+  }
+  
+  // Get the closest gate to a Math Wall position
+  const getClosestGate = (x, y) => {
+    // Find the gate at this exact position
+    const exactGate = MATH_WALL_GATES.find(gate => gate.x === x && gate.y === y)
+    if (exactGate) return exactGate
+    
+    // If not at exact gate position, find nearest gate on the same barrier
+    if (x === 15) {
+      // On vertical barrier - find nearest vertical gate
+      const verticalGates = MATH_WALL_GATES.filter(g => g.dir === 'vertical')
+      return verticalGates.reduce((nearest, gate) => {
+        const currentDist = Math.abs(gate.y - y)
+        const nearestDist = Math.abs(nearest.y - y)
+        return currentDist < nearestDist ? gate : nearest
+      })
+    } else if (y === 18) {
+      // On horizontal barrier - find nearest horizontal gate
+      const horizontalGates = MATH_WALL_GATES.filter(g => g.dir === 'horizontal')
+      return horizontalGates.reduce((nearest, gate) => {
+        const currentDist = Math.abs(gate.x - x)
+        const nearestDist = Math.abs(nearest.x - x)
+        return currentDist < nearestDist ? gate : nearest
+      })
+    }
+    return null
+  }
+
+  const handleEasterEggCollision = (x, y) => {
+    const key = `${x},${y}`
+    const egg = easterEggMap.get(key)
+    if (!egg) return false
+
+    // Prevent double-triggering within cooldown
+    if (easterEggCooldown.has(egg.id)) return false
+
+    setEasterEggCooldown((prev) => new Map(prev).set(egg.id, true))
+    setTimeout(() => {
+      setEasterEggCooldown((prev) => {
+        const updated = new Map(prev)
+        updated.delete(egg.id)
+        return updated
+      })
+    }, 2000)
+
+    switch (egg.type) {
+      case 'stop-enemy':
+        sound.playGoodInvestSound()
+        setEnemyFrozen(true)
+        setMessage('🛑 Enemy frozen for 15 seconds!')
+        return true
+      case 'instant-win':
+        sound.stopBackgroundSound()
+        sound.playWinSound()
+        setGameStatus('won')
+        setMessage('🎊 You found the instant win! Game completed!')
+        return true
+      case 'freeze-player':
+        sound.playBadInvestSound()
+        setPlayerFrozen(true)
+        setMessage('❄️ You are frozen for 10 seconds!')
+        return true
+      case 'rick-roll':
+        sound.playWinSound()
+        setMessage('🎬 Opening surprise...')
+        setTimeout(() => {
+          window.open('https://www.youtube.com/watch?v=dQw4w9WgXcQ', '_blank')
+        }, 500)
+        return true
+      default:
+        return false
+    }
+  }
+  
+  const isWalkable = (x, y) => {
+    if (!isInsideMap(x, y)) return false
+    const tile = factoryMap[y][x]
+    // Can't walk into walls or unsolved Math Walls
+    return tile !== 'W' && !isMathWall(x, y)
+  }
+  
+  const getTileAt = (x, y) => {
+    if (!isInsideMap(x, y)) return null
+    return factoryMap[y][x]
+  }
+
+  // Retrieve hardcoded multiple-choice quiz for the targeted Math Wall gate
+  const getMathWallQuiz = (gateId) => {
+    return MATH_WALL_QUIZZES[gateId] || MATH_WALL_QUIZZES.default
+  }
+
+  // Handle Math Wall interaction
+  const handleMathWall = (newX, newY) => {
+    const gate = getClosestGate(newX, newY)
+    if (!gate) return false
+
+    const quiz = getMathWallQuiz(gate.id)
+    const optionsText = quiz.options
+      .map((opt, idx) => `${idx + 1}) ${opt}`)
+      .join('\n')
+
+    const userAnswer = window.prompt(
+      `🧠 Safety Gate Challenge\n\nObjective: ${quiz.objective}\n\n${quiz.question}\n\n${optionsText}\n\nChoose 1-${quiz.options.length}`
+    )
+
+    if (userAnswer === null) {
+      // User cancelled
+      setMessage('You cancelled the gate challenge.')
+      return false
+    }
+
+    const userNum = parseInt(userAnswer, 10) - 1
+    const isValidChoice = !isNaN(userNum) && userNum >= 0 && userNum < quiz.options.length
+
+    if (!isValidChoice) {
+      setMessage('Invalid choice. The gate stays locked.')
+      return false
+    }
+
+    if (userNum === quiz.correctIndex) {
+      // Correct answer! Unlock only this gate cell
+      sound.playGoodInvestSound()
+      const newSolvedWalls = new Set(solvedMathWalls)
+      newSolvedWalls.add(`${newX},${newY}`)
+      setSolvedMathWalls(newSolvedWalls)
+      setMessage('✓ Gate opened at this spot. Move through!')
+      return true
+    } else {
+      // Wrong answer - game over
+      sound.stopBackgroundSound()
+      sound.playLoseSound()
+      setGameStatus('lost')
+      setMessage(
+        `💥 Wrong answer! Game Over. The safest choice was "${quiz.options[quiz.correctIndex]}".`
+      )
+      return false
+    }
+  }
+
+  // Enemy capture ends the whole game, not just the grid view
+  const handleEnemyCatch = () => {
+    if (gameStatus !== 'playing') return
+    sound.stopBackgroundSound()
+    sound.playLoseSound()
+    setGameStatus('lost')
+    setMessage('💥 The saboteur caught you on the factory floor!')
+  }
+
+  // Shared movement function with smooth animation
+  const processMovement = (dx, dy) => {
+    if (!gameStarted || gameStatus !== 'playing' || isMoving || isPaused || playerFrozen) return
+
+    const newX = playerPosition.x + dx
+    const newY = playerPosition.y + dy
+
+    // Check for Easter eggs FIRST
+    if (handleEasterEggCollision(newX, newY)) {
+      setIsMoving(true)
+      setPlayerPosition({ x: newX, y: newY })
+      setTimeout(() => setIsMoving(false), 200)
+      return
+    }
+
+    // Check for Math Wall before other collision checks
+    if (isMathWall(newX, newY)) {
+      const solved = handleMathWall(newX, newY)
+      if (!solved) return
+    }
+
+    if (isWalkable(newX, newY)) {
+      sound.playMoveSound() // Play step sound
+      setIsMoving(true)
+      setPlayerPosition({ x: newX, y: newY })
+      setTimeout(() => setIsMoving(false), 200)
+      const tile = getTileAt(newX, newY)
+
+      if (tile && (tile.startsWith('G') || tile.startsWith('R') || tile.startsWith('Y'))) {
+        if (completedObjectives.includes(tile)) {
+          setActiveObjectiveId(null)
+          setMessage(`✓ You already completed ${objectives[tile].name}.`)
+        } else {
+          setActiveObjectiveId(tile)
+          setMessage(
+            `📍 You arrived at ${objectives[tile].name}. Decide how to proceed.`
+          )
+        }
+      } else {
+        setActiveObjectiveId(null)
+      }
+    } else {
+      setMessage('You cannot walk through walls!')
+    }
+  }
+
+  // Keyboard movement - Global keyboard listener for arrow keys
+  useEffect(() => {
+    const handleKeyDown = (event) => {
+      // Block movement if paused or frozen
+      if (isPaused || playerFrozen) return
+      
+      let dx = 0,
+        dy = 0
+
+      // Map arrow keys to movement directions
+      if (event.key === 'ArrowUp') dy = -1
+      else if (event.key === 'ArrowDown') dy = 1
+      else if (event.key === 'ArrowLeft') dx = -1
+      else if (event.key === 'ArrowRight') dx = 1
+      else return
+
+      event.preventDefault()
+      
+      // Movement logic with latest state
+      setPlayerPosition((prevPos) => {
+        const newX = prevPos.x + dx
+        const newY = prevPos.y + dy
+
+        // Check for Easter eggs FIRST
+        if (handleEasterEggCollision(newX, newY)) {
+          sound.playMoveSound()
+          setIsMoving(true)
+          setTimeout(() => setIsMoving(false), 200)
+          return { x: newX, y: newY }
+        }
+
+        // Check for Math Wall before other collision checks
+        if (isMathWall(newX, newY)) {
+          const solved = handleMathWall(newX, newY)
+          if (!solved) return prevPos
+        }
+
+        if (isWalkable(newX, newY)) {
+          sound.playMoveSound() // Play step sound
+          setIsMoving(true)
+          setTimeout(() => setIsMoving(false), 200)
+          
+          const tile = getTileAt(newX, newY)
+          if (tile && (tile.startsWith('G') || tile.startsWith('R') || tile.startsWith('Y'))) {
+            setCompletedObjectives((completed) => {
+              if (completed.includes(tile)) {
+                setActiveObjectiveId(null)
+                setMessage(`✓ You already completed ${objectives[tile].name}.`)
+              } else {
+                setActiveObjectiveId(tile)
+                setMessage(
+                  `📍 You arrived at ${objectives[tile].name}. Decide how to proceed.`
+                )
+              }
+              return completed
+            })
+          } else {
+            setActiveObjectiveId(null)
+          }
+          
+          return { x: newX, y: newY }
+        } else {
+          setMessage('You cannot walk through walls!')
+          return prevPos
+        }
+      })
+    }
+
+    // Only add listener when game is active
+    if (gameStarted && gameStatus === 'playing') {
+      window.addEventListener('keydown', handleKeyDown)
+    }
+    
+    // Clean up listener on unmount or when game state changes
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [gameStarted, gameStatus, solvedMathWalls, isPaused, playerFrozen])
+
+  // Timer - Starts countdown when game begins
+  useEffect(() => {
+    // Only run timer when game has started and is playing
+    if (!gameStarted || gameStatus !== 'playing' || isPaused) return
+
+    // Set up interval to countdown every second
+    const intervalId = setInterval(() => {
+      setTimeLeft((prev) => {
+        if (prev <= 1) {
+          clearInterval(intervalId)
+          sound.stopBackgroundSound()
+          if (safetyScore >= 80) {
+            sound.playWinSound()
+            setGameStatus('won')
+            setMessage(
+              'Time is up! Your final Safety Score is strong enough. You saved the factory!'
+            )
+          } else {
+            sound.playLoseSound()
+            setGameStatus('lost')
+            setMessage(
+              'Time is up and the Safety Score is too low. The factory is not safe enough.'
+            )
+          }
+          return 0
+        }
+        // Play warning beep when timer reaches 10 seconds or less
+        if (prev <= 10) {
+          sound.playWarningBeep()
+        }
+        return prev - 1
+      })
+    }, 1000)
+
+    // Clean up interval on unmount or when dependencies change
+    return () => clearInterval(intervalId)
+  }, [gameStarted, gameStatus, safetyScore, isPaused])
+
+  // Clean up audio on unmount
+  useEffect(() => {
+    return () => {
+      sound.stopBackgroundSound()
+    }
+  }, [])
+
+  // Easter egg blinking timer - toggle visibility every 10 seconds (3s visible, 7s hidden)
+  useEffect(() => {
+    const eggBlinkInterval = setInterval(() => {
+      // Make all eggs visible
+      setEasterEggVisible(new Set(EASTER_EGGS.map(egg => `${egg.x},${egg.y}`)))
+      
+      // Hide them after 3 seconds
+      const hideTimer = setTimeout(() => {
+        setEasterEggVisible(new Set())
+      }, 3000)
+      
+      return () => clearTimeout(hideTimer)
+    }, 10000)
+    
+    return () => clearInterval(eggBlinkInterval)
+  }, [])
+
+  // Player freeze timeout - reset playerFrozen after 10 seconds
+  useEffect(() => {
+    if (!playerFrozen) return
+    
+    const freezeTimer = setTimeout(() => {
+      setPlayerFrozen(false)
+      setMessage('❄️ You are unfrozen!')
+    }, 10000)
+    
+    return () => clearTimeout(freezeTimer)
+  }, [playerFrozen])
+
+  // Enemy freeze timeout - reset enemyFrozen after 15 seconds
+  useEffect(() => {
+    if (!enemyFrozen) return
+    
+    const freezeTimer = setTimeout(() => {
+      setEnemyFrozen(false)
+      setMessage('🛑 Enemy is unfrozen!')
+    }, 15000)
+    
+    return () => clearTimeout(freezeTimer)
+  }, [enemyFrozen])
+
+  // Investment logic with checkpoint feedback
+  const handleInvest = () => {
+    if (!activeObjectiveId) return
+    const obj = objectives[activeObjectiveId]
+
+    if (completedObjectives.includes(activeObjectiveId)) {
+      setMessage('✗ This checkpoint has already been completed.')
+      return
+    }
+
+    if (budget - obj.cost < 0) {
+      setMessage(`💰 Not enough budget for ${obj.name}. You only have RM${budget}.`)
+      return
+    }
+
+    const newBudget = budget - obj.cost + (obj.budgetChange || 0)
+    const newSafety = safetyScore + obj.safetyChange
+    const newAccidentRisk = accidentRisk + obj.accidentRiskChange
+    const newTimeLeft = Math.max(0, timeLeft + (obj.timeChange || 0))
+
+    // Play sound based on checkpoint type
+    if (obj.type === 'advantage') {
+      sound.playGoodInvestSound()
+    } else if (obj.type === 'disadvantage') {
+      sound.playBadInvestSound()
+    } else if (obj.type === 'neutral') {
+      sound.playNeutralInvestSound()
+    }
+
+    setBudget(newBudget)
+    setSafetyScore(newSafety)
+    setAccidentRisk(newAccidentRisk)
+    if (obj.timeChange) {
+      setTimeLeft(newTimeLeft)
+    }
+    setCompletedObjectives((prev) => [...prev, activeObjectiveId])
+    setActiveObjectiveId(null)
+
+    // Show visual feedback
+    const feedback = {
+      name: obj.name,
+      changes: []
+    }
+    if (obj.safetyChange !== 0) feedback.changes.push(`Safety ${obj.safetyChange > 0 ? '+' : ''}${obj.safetyChange}`)
+    if (obj.accidentRiskChange !== 0) feedback.changes.push(`Risk ${obj.accidentRiskChange > 0 ? '+' : ''}${obj.accidentRiskChange}`)
+    if (obj.budgetChange) feedback.changes.push(`Budget ${obj.budgetChange > 0 ? '+' : ''}${obj.budgetChange}`)
+    if (obj.timeChange) feedback.changes.push(`Time ${obj.timeChange > 0 ? '+' : ''}${obj.timeChange}s`)
+    
+    setCheckpointFeedback(feedback)
+    setTimeout(() => setCheckpointFeedback(null), 3000)
+
+    setMessage(
+      `✓ ${obj.name} completed! ${feedback.changes.join(', ')}`
+    )
+
+    // Win condition
+    if (newSafety >= 80) {
+      sound.stopBackgroundSound()
+      sound.playWinSound()
+      setGameStatus('won')
+      setMessage('You saved the SafeCity Factory! Safety Score reached 80. Great job!')
+      return
+    }
+
+    // Lose conditions
+    if (newBudget <= 0 || newSafety <= 0 || newAccidentRisk > 80) {
+      sound.stopBackgroundSound()
+      sound.playLoseSound()
+      setGameStatus('lost')
+      let lossReason = ''
+      if (newBudget <= 0) {
+        lossReason = 'The factory ran out of budget.'
+      } else if (newSafety <= 0) {
+        lossReason = 'The factory became too unsafe.'
+      } else if (newAccidentRisk > 80) {
+        lossReason = 'Accident risk exceeded 80! The factory is too dangerous.'
+      }
+      setMessage(`Oh no! Game over. ${lossReason}`)
+    }
+  }
+
+  const handleSkip = () => {
+    if (!activeObjectiveId) return
+    sound.playSkipSound()
+    setMessage(`You skipped the ${objectives[activeObjectiveId].name}.`)
+    setActiveObjectiveId(null)
+  }
+
+  const handlePauseToggle = () => {
+    if (!gameStarted || gameStatus !== 'playing') return
+    setIsPaused(!isPaused)
+    setMessage(isPaused ? '▶️ Game resumed' : '⏸️ Game paused')
+  }
+
+  const handleRestart = () => {
+    window.location.reload()
+  }
+
+  // Render grid with uniform yellow checkpoints and Math Walls
+  const renderCell = (x, y) => {
+    const tile = getTileAt(x, y)
+    const isPlayerHere = playerPosition.x === x && playerPosition.y === y
+    const isCompleted = completedObjectives.includes(tile)
+    const isMathWallCell = isMathWall(x, y)
+    const isSolvedMathWall = MATH_WALL_CELLS.has(`${x},${y}`) && solvedMathWalls.has(`${x},${y}`)
+
+    let backgroundColor = '#e0e0e0'
+    let label = ''
+
+    if (tile === 'W') {
+      backgroundColor = '#444'
+    } else if (isMathWallCell) {
+      // Unsolved Math Wall - red background
+      backgroundColor = '#ef5350'
+      label = '🧮'
+    } else if (isSolvedMathWall) {
+      // Solved Math Wall - now walkable, show as light green
+      backgroundColor = '#c8e6c9'
+      label = '✓'
+    } else if (tile && (tile.startsWith('G') || tile.startsWith('R') || tile.startsWith('Y'))) {
+      // All checkpoints are yellow for visual consistency
+      backgroundColor = isCompleted ? '#fff59d' : '#ffd54f'
+      label = tile
+    }
+
+    return (
+      <div
+        key={`${x}-${y}`}
+        className={`game-tile ${(tile && (tile.startsWith('G') || tile.startsWith('R') || tile.startsWith('Y')) && !isCompleted) ? 'objective-tile' : ''}`}
+        style={{
+          width: 32,
+          height: 32,
+          border: tile === 'W' ? 'none' : '1px solid rgba(0,0,0,0.1)',
+          boxSizing: 'border-box',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          backgroundColor,
+          fontSize: 14,
+          position: 'relative',
+          boxShadow: tile === 'W' ? 'inset 0 2px 4px rgba(0,0,0,0.3)' : isMathWallCell ? '0 0 8px rgba(239,83,80,0.6)' : 'none',
+          transition: 'all 0.2s ease',
+          opacity: isCompleted ? 0.5 : 1,
+        }}
+      >
+        {!isPlayerHere && label && (
+          <span style={{ fontSize: 9, color: '#000', fontWeight: 700, textShadow: '0 1px 2px rgba(255,255,255,0.5)' }}>{label}</span>
+        )}
+        {isPlayerHere && (
+          <span className="player-character" style={{ fontSize: 22 }} role="img" aria-label="player">
+            🧑‍💼
+          </span>
+        )}
+      </div>
+    )
+  }
+
+  const renderRow = (y) => {
+    const cells = []
+    for (let x = 0; x < MAP_WIDTH; x++) {
+      cells.push(renderCell(x, y))
+    }
+    return (
+      <div key={y} style={{ display: 'flex' }}>
+        {cells}
+      </div>
+    )
+  }
+
+  const renderGrid = () => {
+    const rows = []
+    for (let y = 0; y < MAP_HEIGHT; y++) {
+      rows.push(renderRow(y))
+    }
+    return <div>{rows}</div>
+  }
+
+  const currentObjective = activeObjectiveId ? objectives[activeObjectiveId] : null
+
+  return (
+    <div
+      style={{
+        minHeight: '100vh',
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'flex-start',
+        padding: 20,
+        background:
+          'radial-gradient(circle at top, #fefefe 0, #e0f7fa 40%, #e0e0e0 100%)',
+        fontFamily: 'system-ui, -apple-system, BlinkMacSystemFont, sans-serif',
+        color: '#111',
+        overflow: 'visible',
+      }}
+    >
+      {/* START GAME OVERLAY */}
+      {!gameStarted && gameStatus === 'playing' && (
+        <div
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: 'rgba(0, 0, 0, 0.85)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 2000,
+            animation: 'fadeIn 0.3s ease-out',
+          }}
+        >
+          <div
+            style={{
+              backgroundColor: 'white',
+              padding: 48,
+              borderRadius: 20,
+              textAlign: 'center',
+              maxWidth: 900,
+              width: '90%',
+              border: '4px solid #1976d2',
+              boxShadow: '0 20px 60px rgba(25, 118, 210, 0.4)',
+              animation: 'slideInUp 0.5s ease-out',
+            }}
+          >
+            <h2
+              style={{
+                margin: '0 0 16px 0',
+                fontSize: 36,
+                fontWeight: 900,
+                color: '#1a237e',
+                textTransform: 'uppercase',
+                letterSpacing: 1.5,
+              }}
+            >
+              🏭 Ready to Save the Factory?
+            </h2>
+            <p style={{ fontSize: 16, color: '#424242', marginBottom: 12, lineHeight: 1.6, fontWeight: 600 }}>
+              You have <strong style={{ color: '#f57c00', fontSize: 20 }}>120 seconds</strong> to reach a Safety Score of <strong style={{ color: '#2e7d32', fontSize: 18 }}>80+</strong>
+            </p>
+            <p style={{ fontSize: 14, color: '#616161', marginBottom: 24, lineHeight: 1.5 }}>
+              Navigate the factory floor, visit checkpoints, and make strategic decisions to improve safety while managing your budget.
+            </p>
+            
+            {/* Mission Objectives in Start Modal */}
+            <div
+              style={{
+                marginBottom: 32,
+                padding: 20,
+                borderRadius: 12,
+                background: 'linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%)',
+                border: '2px solid #1976d2',
+                boxShadow: '0 4px 12px rgba(25, 118, 210, 0.15)',
+              }}
+            >
+              <h3
+                style={{
+                  marginTop: 0,
+                  marginBottom: 16,
+                  fontSize: 20,
+                  fontWeight: 800,
+                  color: '#1a237e',
+                  textAlign: 'center',
+                  letterSpacing: 0.5,
+                  textTransform: 'uppercase',
+                }}
+              >
+                🎯 Mission Objectives
+              </h3>
+              <div
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(3, 1fr)',
+                  gap: 12,
+                  fontSize: 13,
+                  color: '#212121',
+                  fontWeight: 500,
+                  textAlign: 'left',
+                }}
+              >
+                <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+                  <span
+                    style={{
+                      flexShrink: 0,
+                      width: 28,
+                      height: 28,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      borderRadius: '50%',
+                      background: 'linear-gradient(135deg, #1976d2 0%, #42a5f5 100%)',
+                      color: '#fff',
+                      fontSize: 13,
+                      fontWeight: 800,
+                      boxShadow: '0 2px 6px rgba(25, 118, 210, 0.3)',
+                    }}
+                  >
+                    1
+                  </span>
+                  <span style={{ fontWeight: 600, fontSize: 12 }}>
+                    Visit checkpoints: All appear as <strong style={{ color: '#f57c00' }}>🟡 Yellow</strong> tiles on the grid.
+                  </span>
+                </div>
+                <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+                  <span
+                    style={{
+                      flexShrink: 0,
+                      width: 28,
+                      height: 28,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      borderRadius: '50%',
+                      background: 'linear-gradient(135deg, #1976d2 0%, #42a5f5 100%)',
+                      color: '#fff',
+                      fontSize: 13,
+                      fontWeight: 800,
+                      boxShadow: '0 2px 6px rgba(25, 118, 210, 0.3)',
+                    }}
+                  >
+                    2
+                  </span>
+                  <span style={{ fontWeight: 600, fontSize: 12 }}>
+                    Press <strong>Invest</strong> to activate checkpoint effects (costs budget).
+                  </span>
+                </div>
+                <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+                  <span
+                    style={{
+                      flexShrink: 0,
+                      width: 28,
+                      height: 28,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      borderRadius: '50%',
+                      background: 'linear-gradient(135deg, #1976d2 0%, #42a5f5 100%)',
+                      color: '#fff',
+                      fontSize: 13,
+                      fontWeight: 800,
+                      boxShadow: '0 2px 6px rgba(25, 118, 210, 0.3)',
+                    }}
+                  >
+                    3
+                  </span>
+                  <span style={{ fontWeight: 600, fontSize: 12 }}>
+                    Reach <strong style={{ color: '#2e7d32' }}>Safety 80+</strong> before time expires.
+                  </span>
+                </div>
+                <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+                  <span
+                    style={{
+                      flexShrink: 0,
+                      width: 28,
+                      height: 28,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      borderRadius: '50%',
+                      background: 'linear-gradient(135deg, #1976d2 0%, #42a5f5 100%)',
+                      color: '#fff',
+                      fontSize: 13,
+                      fontWeight: 800,
+                      boxShadow: '0 2px 6px rgba(25, 118, 210, 0.3)',
+                    }}
+                  >
+                    4
+                  </span>
+                  <span style={{ fontWeight: 600, fontSize: 12 }}>
+                    You have <strong style={{ color: '#f57c00' }}>120 seconds</strong> to complete the mission.
+                  </span>
+                </div>
+                <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+                  <span
+                    style={{
+                      flexShrink: 0,
+                      width: 28,
+                      height: 28,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      borderRadius: '50%',
+                      background: 'linear-gradient(135deg, #1976d2 0%, #42a5f5 100%)',
+                      color: '#fff',
+                      fontSize: 13,
+                      fontWeight: 800,
+                      boxShadow: '0 2px 6px rgba(25, 118, 210, 0.3)',
+                    }}
+                  >
+                    5
+                  </span>
+                  <span style={{ fontWeight: 600, fontSize: 12 }}>
+                    A <strong style={{ color: '#d32f2f' }}>saboteur</strong> is chasing you - avoid getting caught!
+                  </span>
+                </div>
+                <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+                  <span
+                    style={{
+                      flexShrink: 0,
+                      width: 28,
+                      height: 28,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      borderRadius: '50%',
+                      background: 'linear-gradient(135deg, #1976d2 0%, #42a5f5 100%)',
+                      color: '#fff',
+                      fontSize: 13,
+                      fontWeight: 800,
+                      boxShadow: '0 2px 6px rgba(25, 118, 210, 0.3)',
+                    }}
+                  >
+                    6
+                  </span>
+                  <span style={{ fontWeight: 600, fontSize: 12 }}>
+                    Cross <strong style={{ color: '#ef5350' }}>🔴 Red Walls</strong> by answering safety questions correctly. Game pauses when you hit them.
+                  </span>
+                </div>
+              </div>
+            </div>
+            
+            <button
+              onClick={() => {
+                setGameStarted(true)
+                sound.playStartSound()
+                sound.startBackgroundSound()
+                setMessage('🎮 Game started! Move to checkpoints and make your choices wisely.')
+              }}
+              className="game-button"
+              style={{
+                padding: '16px 40px',
+                fontSize: 20,
+                fontWeight: 900,
+                background: 'linear-gradient(135deg, #43a047 0%, #2e7d32 100%)',
+                color: 'white',
+                border: '3px solid #1b5e20',
+                borderRadius: 12,
+                cursor: 'pointer',
+                textTransform: 'uppercase',
+                letterSpacing: 2,
+                boxShadow: '0 6px 16px rgba(67,160,71,0.5)',
+                animation: 'pulse 2s ease-in-out infinite',
+              }}
+            >
+              ▶️ START GAME
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* CHECKPOINT FEEDBACK OVERLAY */}
+      {checkpointFeedback && (
+        <div
+          style={{
+            position: 'fixed',
+            top: 100,
+            left: '50%',
+            transform: 'translateX(-50%)',
+            zIndex: 1500,
+            animation: 'slideInUp 0.3s ease-out',
+          }}
+        >
+          <div
+            style={{
+              padding: '16px 32px',
+              borderRadius: 12,
+              background: 'linear-gradient(135deg, #ffd54f 0%, #ffb300 100%)',
+              color: '#1a237e',
+              fontWeight: 800,
+              fontSize: 16,
+              boxShadow: '0 8px 24px rgba(0,0,0,0.3)',
+              border: '2px solid rgba(255,255,255,0.3)',
+              textAlign: 'center',
+            }}
+          >
+            <div style={{ marginBottom: 4 }}>{checkpointFeedback.name}</div>
+            <div style={{ fontSize: 14, opacity: 0.95 }}>{checkpointFeedback.changes.join(' | ')}</div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL OVERLAY (Game Result) */}
+      {gameStatus !== 'playing' && (
+        <div
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: 'rgba(0, 0, 0, 0.5)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 1000,
+          }}
+        >
+          <div
+            style={{
+              backgroundColor: 'white',
+              padding: 40,
+              borderRadius: 16,
+              boxShadow: '0 20px 60px rgba(0,0,0,0.4), 0 0 0 4px rgba(0,0,0,0.05)',
+              textAlign: 'center',
+              maxWidth: 450,
+              width: '90%',
+              border: `3px solid ${gameStatus === 'won' ? '#43a047' : '#e53935'}`,
+              animation: 'slideInUp 0.4s ease-out',
+            }}
+          >
+            <h2
+              style={{
+                margin: '0 0 20px 0',
+                fontSize: 34,
+                fontWeight: 900,
+                color: gameStatus === 'won' ? '#1b5e20' : '#b71c1c',
+                textTransform: 'uppercase',
+                letterSpacing: 1,
+                textShadow: `0 2px 4px ${gameStatus === 'won' ? 'rgba(27,94,32,0.2)' : 'rgba(183,28,28,0.2)'}`,
+              }}
+            >
+              {gameStatus === 'won' ? '🎉 Factory Saved!' : '💥 Game Over'}
+            </h2>
+            <p style={{ fontSize: 16, color: '#424242', marginBottom: 24, lineHeight: 1.6, fontWeight: 600 }}>
+              {gameStatus === 'won'
+                ? 'You reached a Safety Score of at least 80. Great job! You saved the SafeCity Factory!'
+                : message}
+            </p>
+            <button
+              onClick={() => window.location.reload()}
+              className="game-button"
+              style={{
+                padding: '14px 32px',
+                fontSize: 16,
+                fontWeight: 800,
+                background: gameStatus === 'won' 
+                  ? 'linear-gradient(135deg, #43a047 0%, #2e7d32 100%)' 
+                  : 'linear-gradient(135deg, #e53935 0%, #c62828 100%)',
+                color: 'white',
+                border: `2px solid ${gameStatus === 'won' ? '#2e7d32' : '#c62828'}`,
+                borderRadius: 10,
+                cursor: 'pointer',
+                textTransform: 'uppercase',
+                letterSpacing: 1,
+                boxShadow: `0 4px 12px ${gameStatus === 'won' ? 'rgba(67,160,71,0.4)' : 'rgba(229,57,53,0.4)'}`,
+              }}
+            >
+              🔄 Play Again
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* MAIN DASHBOARD CONTAINER */}
+      <div
+        style={{
+          backgroundColor: 'white',
+          padding: 24,
+          borderRadius: 12,
+          boxShadow:
+            '0 10px 40px rgba(0,0,0,0.12), 0 4px 8px rgba(0,0,0,0.08)',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 20,
+          maxWidth: 1400,
+          width: '100%',
+          overflow: 'visible',
+        }}
+      >
+        {/* TITLE SECTION */}
+        <div style={{ textAlign: 'center', paddingBottom: 16 }}>
+          <h1
+            style={{
+              marginTop: 0,
+              marginBottom: 8,
+              fontSize: 32,
+              fontWeight: 900,
+              background: 'linear-gradient(135deg, #1a237e 0%, #283593 100%)',
+              WebkitBackgroundClip: 'text',
+              WebkitTextFillColor: 'transparent',
+              backgroundClip: 'text',
+              textTransform: 'uppercase',
+              letterSpacing: 1,
+              textShadow: '0 2px 4px rgba(0,0,0,0.1)',
+            }}
+          >
+            🏭 OSH Budget Quest: Save the SafeCity Factory!
+          </h1>
+          <p style={{ marginTop: 0, fontSize: 15, color: '#616161', fontWeight: 600, lineHeight: 1.6 }}>
+            Manage the factory budget and safety measures. Reach <strong style={{ color: '#2e7d32' }}>Safety Score 80</strong> before time runs out.
+            Keep <strong style={{ color: '#c62828' }}>accident risk below 80</strong> to avoid catastrophe.
+          </p>
+        </div>
+
+        {/* TWO-COLUMN LAYOUT: GRID (LEFT) + DASHBOARD (RIGHT) */}
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: '1fr 1fr',
+            gap: 24,
+            alignItems: 'start',
+            width: '100%',
+          }}
+        >
+          {/* LEFT COLUMN: GAME GRID */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            <div style={{ fontSize: 13, color: '#555' }}>
+              Use <strong>arrow keys</strong> or <strong>click buttons</strong> to move around the factory.
+            </div>
+
+            {/* Grid and Keyboard Row */}
+            <div style={{ display: 'flex', gap: 16, alignItems: 'flex-start' }}>
+              {/* Phaser-enhanced grid (React still owns logic/state) */}
+              <div
+                className="game-grid-container"
+                style={{
+                  border: '3px solid rgba(25, 118, 210, 0.4)',
+                  borderRadius: 8,
+                  padding: 4,
+                  background: 'linear-gradient(135deg, #0f172a 0%, #1e293b 100%)',
+                  display: 'inline-block',
+                  boxShadow: '0 8px 24px rgba(0, 0, 0, 0.3), 0 0 60px rgba(25, 118, 210, 0.2)',
+                }}
+              >
+                <PhaserLayer
+                  map={factoryMap}
+                  playerPosition={playerPosition}
+                  solvedMathWalls={solvedMathWalls}
+                  onGameOver={handleEnemyCatch}
+                  gameStarted={gameStarted}
+                  isPaused={isPaused}
+                  easterEggVisible={easterEggVisible}
+                  easterEggs={EASTER_EGGS}
+                  enemyFrozen={enemyFrozen}
+                  playerFrozen={playerFrozen}
+                />
+              </div>
+            </div>
+
+          </div>
+
+          {/* RIGHT COLUMN: KEYBOARD + FACTORY DASHBOARD + EMERGENCY DRILL ZONE */}
+          <div
+            style={{
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 12,
+              overflow: 'visible',
+            }}
+          >
+            <div style={{ display: 'flex', gap: 8, marginTop: 0 }}>
+                <button
+                  onClick={handlePauseToggle}
+                  className="game-button"
+                  disabled={!gameStarted || gameStatus !== 'playing'}
+                  style={{
+                    padding: '8px 16px',
+                    borderRadius: 10,
+                    border: '2px solid #f57c00',
+                    background: isPaused 
+                      ? 'linear-gradient(135deg, #66bb6a 0%, #43a047 100%)'
+                      : 'linear-gradient(135deg, #ffa726 0%, #f57c00 100%)',
+                    color: 'white',
+                    cursor: (!gameStarted || gameStatus !== 'playing') ? 'not-allowed' : 'pointer',
+                    fontSize: 14,
+                    fontWeight: 800,
+                    boxShadow: '0 4px 8px rgba(245, 124, 0, 0.3)',
+                    textTransform: 'uppercase',
+                    letterSpacing: 0.5,
+                    opacity: (!gameStarted || gameStatus !== 'playing') ? 0.5 : 1,
+                  }}
+                >
+                  {isPaused ? '▶️ Resume' : '⏸️ Pause'}
+                </button>
+                <button
+                  onClick={handleRestart}
+                  className="game-button"
+                  style={{
+                    padding: '8px 16px',
+                    borderRadius: 10,
+                    border: '2px solid #d32f2f',
+                    background: 'linear-gradient(135deg, #e57373 0%, #d32f2f 100%)',
+                    color: 'white',
+                    cursor: 'pointer',
+                    fontSize: 14,
+                    fontWeight: 800,
+                    boxShadow: '0 4px 8px rgba(211, 47, 47, 0.3)',
+                    textTransform: 'uppercase',
+                    letterSpacing: 0.5,
+                  }}
+                >
+                  🔄 Restart
+                </button>
+              </div>
+
+            {/* Factory Dashboard header */}
+            <h2
+              style={{
+                margin: 0,
+                fontSize: 22,
+                fontWeight: 800,
+                color: '#1a237e',
+                textTransform: 'uppercase',
+                letterSpacing: 0.5,
+                textShadow: '0 2px 4px rgba(0,0,0,0.1)',
+              }}
+            >
+              🏭 Factory Dashboard
+            </h2>
+
+            {/* Scoreboard */}
+            <div
+              className="stat-card glass-card"
+              style={{
+                padding: 20,
+                borderRadius: 14,
+                background: 'linear-gradient(135deg, rgba(227, 242, 253, 0.95) 0%, rgba(187, 222, 251, 0.95) 100%)',
+                backdropFilter: 'blur(10px)',
+                border: '2px solid rgba(25, 118, 210, 0.3)',
+                minHeight: 120,
+                fontSize: 14,
+                color: '#0d47a1',
+                boxShadow: '0 8px 24px rgba(25, 118, 210, 0.25), inset 0 1px 0 rgba(255, 255, 255, 0.5)',
+              }}
+            >
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  marginBottom: 12,
+                  gap: 16,
+                }}
+              >
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  <div className="stat-card" style={{ padding: 12, borderRadius: 10, background: budget < 2000 ? 'linear-gradient(135deg, #fff3e0 0%, #ffe0b2 100%)' : 'linear-gradient(135deg, #ffffff 0%, #f5f5f5 100%)', border: budget < 2000 ? '2px solid #ff9800' : '1px solid #e0e0e0' }}>
+                    <div style={{ fontSize: 11, color: '#616161', fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 4 }}>💰 Budget</div>
+                    <div style={{ fontSize: 22, fontWeight: 900, color: budget < 2000 ? '#e65100' : '#0d47a1', textShadow: '0 1px 2px rgba(0,0,0,0.1)' }}>RM{budget}</div>
+                  </div>
+                  <div className="stat-card" style={{ padding: 12, borderRadius: 10, background: safetyScore >= 80 ? 'linear-gradient(135deg, #e8f5e9 0%, #c8e6c9 100%)' : safetyScore < 30 ? 'linear-gradient(135deg, #ffebee 0%, #ffcdd2 100%)' : 'linear-gradient(135deg, #fffde7 0%, #fff9c4 100%)', border: safetyScore >= 80 ? '2px solid #66bb6a' : safetyScore < 30 ? '2px solid #e53935' : '2px solid #ffeb3b' }}>
+                    <div style={{ fontSize: 11, color: '#616161', fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 4 }}>🛡️ Safety</div>
+                    <div style={{ fontSize: 26, fontWeight: 900, color: safetyScore >= 80 ? '#2e7d32' : safetyScore < 30 ? '#c62828' : '#f57c00', textShadow: '0 2px 4px rgba(0,0,0,0.15)' }}>
+                      {safetyScore}
+                    </div>
+                  </div>
+                  <div className="stat-card" style={{ padding: 12, borderRadius: 10, background: accidentRisk > 80 ? 'linear-gradient(135deg, #ffebee 0%, #ffcdd2 100%)' : accidentRisk > 60 ? 'linear-gradient(135deg, #fff3e0 0%, #ffe0b2 100%)' : 'linear-gradient(135deg, #e8f5e9 0%, #c8e6c9 100%)', border: accidentRisk > 80 ? '2px solid #e53935' : accidentRisk > 60 ? '2px solid #ff9800' : '2px solid #66bb6a' }}>
+                    <div style={{ fontSize: 11, color: '#616161', fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 4 }}>⚠️ Risk</div>
+                    <div style={{ fontSize: 22, fontWeight: 900, color: accidentRisk > 80 ? '#c62828' : accidentRisk > 60 ? '#e65100' : '#2e7d32', textShadow: '0 2px 4px rgba(0,0,0,0.15)' }}>
+                      {accidentRisk}
+                    </div>
+                  </div>
+                </div>
+
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 8 }}>
+                  <div className={timeLeft <= 10 ? 'stat-card time-warning' : 'stat-card'} style={{ textAlign: 'right', padding: 12, borderRadius: 10, background: timeLeft <= 10 ? 'linear-gradient(135deg, #ffebee 0%, #ffcdd2 100%)' : 'linear-gradient(135deg, #e1f5fe 0%, #b3e5fc 100%)', border: timeLeft <= 10 ? '2px solid #e53935' : '2px solid #03a9f4', boxShadow: timeLeft <= 10 ? '0 0 20px rgba(229,57,53,0.4)' : '0 2px 8px rgba(0,0,0,0.1)' }}>
+                    <div style={{ fontSize: 11, color: '#616161', fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 4 }}>⏱️ Time</div>
+                    <div className={timeLeft <= 10 ? 'neon-text' : ''} style={{ fontSize: 28, fontWeight: 900, color: timeLeft <= 10 ? '#c62828' : timeLeft <= 30 ? '#f57c00' : '#0277bd', textShadow: '0 2px 4px rgba(0,0,0,0.2)' }}>{timeLeft}s</div>
+                  </div>
+                  <div
+                    style={{
+                      padding: '6px 16px',
+                      borderRadius: 20,
+                      fontSize: 11,
+                      fontWeight: 900,
+                      textTransform: 'uppercase',
+                      letterSpacing: 1,
+                      background:
+                        gameStatus === 'won'
+                          ? 'linear-gradient(135deg, #66bb6a 0%, #43a047 100%)'
+                          : gameStatus === 'lost'
+                          ? 'linear-gradient(135deg, #ef5350 0%, #e53935 100%)'
+                          : 'linear-gradient(135deg, #90caf9 0%, #42a5f5 100%)',
+                      color: '#fff',
+                      boxShadow:
+                        gameStatus === 'won'
+                          ? '0 4px 12px rgba(67, 160, 71, 0.5)'
+                          : gameStatus === 'lost'
+                          ? '0 4px 12px rgba(229, 57, 53, 0.5)'
+                          : '0 4px 12px rgba(66, 165, 245, 0.4)',
+                      textShadow: '0 1px 2px rgba(0,0,0,0.2)',
+                    }}
+                  >
+                    {gameStatus === 'playing'
+                      ? '⚡ IN PROGRESS'
+                      : gameStatus === 'won'
+                      ? '🏆 YOU WIN'
+                      : '💥 GAME OVER'}
+                  </div>
+                </div>
+              </div>
+
+              <div style={{ fontSize: 16, fontWeight: 700, marginTop: 12, padding: 16, background: 'rgba(255,255,255,0.95)', borderRadius: 10, border: '2px solid rgba(25, 118, 210, 0.4)', boxShadow: '0 2px 8px rgba(0,0,0,0.15)' }}>
+                <strong style={{ color: '#1a237e', fontSize: 16 }}>💬 Supervisor:</strong> <span style={{ color: '#1a237e', marginLeft: 8, fontSize: 18, fontWeight: 800, display: 'inline-block', marginTop: 4 }}>{message}</span>
+              </div>
+            </div>
+
+            {/* CHECKPOINT INTERACTION PANEL (Below Keyboard + Dashboard) */}
+            {currentObjective && gameStatus === 'playing' && (
+              <div
+                style={{
+                  padding: 20,
+                  borderRadius: 12,
+                  background: 'linear-gradient(135deg, #fffde7 0%, #fff9c4 100%)',
+                  border: '3px solid #fdd835',
+                  fontSize: 14,
+                  boxShadow: '0 4px 12px rgba(253, 216, 53, 0.3)',
+                  animation: 'slideInUp 0.3s ease-out',
+                }}
+              >
+                <h3 style={{
+                  marginTop: 0,
+                  marginBottom: 12,
+                  fontSize: 18,
+                  textAlign: 'center',
+                  fontWeight: 800,
+                  color: '#f57c00',
+                  textTransform: 'uppercase',
+                  letterSpacing: 0.5
+                }}>
+                  {currentObjective.name}
+                </h3>
+                <p style={{ marginTop: 0, textAlign: 'center', fontSize: 13, fontWeight: 600, color: '#424242', lineHeight: 1.5 }}>
+                  {currentObjective.description}
+                </p>
+                <p style={{ marginBottom: 16, textAlign: 'center', fontSize: 14, fontWeight: 700 }}>
+                  <strong style={{ color: '#1565c0' }}>Cost:</strong> <span style={{ color: '#0d47a1', fontSize: 16 }}>RM{currentObjective.cost}</span>
+                  <br />
+                  <strong style={{ color: '#1565c0' }}>Effects:</strong>{' '}
+                  {currentObjective.safetyChange !== 0 && (
+                    <>
+                      <span style={{ color: currentObjective.safetyChange > 0 ? '#2e7d32' : '#c62828', fontWeight: 800, fontSize: 15 }}>
+                        Safety {currentObjective.safetyChange > 0 ? '+' : ''}
+                        {currentObjective.safetyChange}
+                      </span>{' '}
+                    </>
+                  )}
+                  {currentObjective.accidentRiskChange !== 0 && (
+                    <>
+                      <span style={{ color: currentObjective.accidentRiskChange > 0 ? '#c62828' : '#2e7d32', fontWeight: 800, fontSize: 15 }}>
+                        Risk {currentObjective.accidentRiskChange > 0 ? '+' : ''}
+                        {currentObjective.accidentRiskChange}
+                      </span>{' '}
+                    </>
+                  )}
+                  {currentObjective.budgetChange !== 0 && (
+                    <>
+                      <span style={{ color: currentObjective.budgetChange > 0 ? '#2e7d32' : '#c62828', fontWeight: 800, fontSize: 15 }}>
+                        Budget {currentObjective.budgetChange > 0 ? '+' : ''}
+                        {currentObjective.budgetChange}
+                      </span>{' '}
+                    </>
+                  )}
+                  {currentObjective.timeChange !== 0 && (
+                    <>
+                      <span style={{ color: currentObjective.timeChange > 0 ? '#2e7d32' : '#f57c00', fontWeight: 800, fontSize: 15 }}>
+                        Time {currentObjective.timeChange > 0 ? '+' : ''}
+                        {currentObjective.timeChange}s
+                      </span>
+                    </>
+                  )}
+                </p>
+                <div style={{ display: 'flex', gap: 12, justifyContent: 'center' }}>
+                  <button
+                    onClick={handleInvest}
+                    className="game-button"
+                    style={{
+                      padding: '10px 20px',
+                      borderRadius: 10,
+                      border: '2px solid #2e7d32',
+                      background: 'linear-gradient(135deg, #43a047 0%, #2e7d32 100%)',
+                      color: 'white',
+                      cursor: 'pointer',
+                      fontSize: 15,
+                      fontWeight: 800,
+                      boxShadow: '0 4px 8px rgba(67, 160, 71, 0.4)',
+                      textTransform: 'uppercase',
+                      letterSpacing: 0.5,
+                    }}
+                  >
+                    ✅ Invest
+                  </button>
+                  <button
+                    onClick={handleSkip}
+                    className="game-button"
+                    style={{
+                      padding: '10px 20px',
+                      borderRadius: 10,
+                      border: '2px solid #757575',
+                      background: 'linear-gradient(135deg, #f5f5f5 0%, #e0e0e0 100%)',
+                      cursor: 'pointer',
+                      fontSize: 15,
+                      color: '#424242',
+                      fontWeight: 800,
+                      boxShadow: '0 4px 8px rgba(0, 0, 0, 0.2)',
+                      textTransform: 'uppercase',
+                      letterSpacing: 0.5,
+                    }}
+                  >
+                    ❌ Skip (no change)
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+export default App

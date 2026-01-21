@@ -1,0 +1,348 @@
+================================================================================
+           TUTORIAL UNTUK LAUNCH GAME "OSH BUDGET QUEST"
+================================================================================
+
+Game ini boleh dijalankan dalam DUA cara:
+1. Run secara LOCAL (di komputer sendiri)
+2. DEPLOY ke online (supaya orang lain boleh main)
+
+================================================================================
+                    BAHAGIAN 1: RUN GAME SECARA LOCAL
+================================================================================
+
+LANGKAH 1: Download dan Install Node.js
+----------------------------------------
+1. Pergi ke https://nodejs.org
+2. Download versi "LTS" (Long Term Support) - yang disyorkan
+3. Jalankan installer dan ikut arahan
+4. Selepas install, verify dengan cara:
+   - Buka Command Prompt atau PowerShell
+   - Taip: node --version
+   - Patut keluar nombor versi (contoh: v20.11.0)
+   - Taip: npm --version
+   - Patut keluar nombor versi (contoh: 10.2.4)
+
+LANGKAH 2: Download dan Install Visual Studio Code (VSCode)
+------------------------------------------------------------
+1. Pergi ke https://code.visualstudio.com
+2. Download untuk Windows
+3. Install VSCode dengan settings default
+4. Buka VSCode selepas install
+
+LANGKAH 3: Buka Folder Game dalam VSCode
+-----------------------------------------
+1. Dalam VSCode, klik "File" > "Open Folder"
+2. Navigate ke folder "game-iskandar" 
+   (folder yang ada file package.json, src, public, dll)
+3. Klik "Select Folder"
+4. VSCode akan buka folder tersebut
+5. Anda akan nampak struktur folder di sebelah kiri:
+   - src/
+   - public/
+   - package.json
+   - vite.config.js
+   - dll
+
+LANGKAH 4: Buka Terminal dalam VSCode
+--------------------------------------
+1. Dalam VSCode, tekan Ctrl + ` (backtick/tanda di bawah ESC)
+   ATAU
+2. Klik menu "Terminal" > "New Terminal"
+3. Terminal akan muncul di bahagian bawah VSCode
+
+LANGKAH 5: Install Dependencies (Kali Pertama Sahaja)
+------------------------------------------------------
+1. Dalam terminal yang baru dibuka, taip command ini:
+   
+   npm install
+
+2. Tekan ENTER
+3. Tunggu proses install selesai (akan download semua package yang diperlukan)
+4. Anda akan nampak folder "node_modules" muncul di sebelah kiri
+5. Ini hanya perlu buat SEKALI sahaja (kecuali ada update package)
+
+LANGKAH 6: Run Development Server
+----------------------------------
+1. Dalam terminal yang sama, taip:
+   
+   npm run dev
+
+2. Tekan ENTER
+3. Tunggu sekejap, anda akan nampak output seperti:
+   
+   VITE v7.3.0  ready in 500 ms
+   
+   ➜  Local:   http://localhost:5173/
+   ➜  Network: use --host to expose
+   ➜  press h + enter to show help
+
+4. Terminal akan show URL local (biasanya http://localhost:5173/)
+
+LANGKAH 7: Buka Game dalam Browser
+-----------------------------------
+1. Ada 2 cara untuk buka:
+   
+   CARA 1 (Mudah):
+   - Tekan Ctrl + Click pada URL "http://localhost:5173/" dalam terminal
+   - Browser akan auto-buka
+   
+   CARA 2 (Manual):
+   - Buka browser (Chrome, Firefox, Edge, dll)
+   - Copy URL dari terminal (http://localhost:5173/)
+   - Paste dalam address bar browser
+   - Tekan ENTER
+
+2. Game akan muncul dan boleh dimainkan!
+
+LANGKAH 8: Hentikan Server (Bila Dah Siap Main)
+------------------------------------------------
+1. Pergi ke terminal dalam VSCode
+2. Tekan Ctrl + C
+3. Tekan Y (Yes) jika ditanya confirm
+4. Server akan stop
+
+TIPS UNTUK LOCAL DEVELOPMENT:
+------------------------------
+- Setiap kali nak main, hanya perlu run "npm run dev" sahaja
+- Tak perlu "npm install" lagi melainkan ada update package
+- Bila edit code, game akan auto-reload dalam browser (Hot Reload)
+- Untuk stop server, tekan Ctrl + C dalam terminal
+
+
+================================================================================
+                    BAHAGIAN 2: DEPLOY GAME KE ONLINE
+================================================================================
+
+Untuk deploy game supaya orang lain boleh access melalui internet, anda 
+perlukan platform hosting. Berikut adalah cara deploy menggunakan platform 
+popular yang PERCUMA:
+
+
+PILIHAN 1: DEPLOY MENGGUNAKAN VERCEL (Disyorkan - Paling Mudah)
+================================================================
+
+LANGKAH 1: Create Account Vercel
+---------------------------------
+1. Pergi ke https://vercel.com
+2. Klik "Sign Up"
+3. Pilih "Continue with GitHub" (paling mudah)
+4. Jika belum ada GitHub account:
+   - Pergi ke https://github.com
+   - Sign up untuk free account
+   - Verify email anda
+   - Kemudian sambung dengan Vercel
+
+LANGKAH 2: Upload Code ke GitHub
+---------------------------------
+1. Pergi ke https://github.com
+2. Login ke account anda
+3. Klik button "New" atau "+" > "New repository"
+4. Bagi nama repository (contoh: osh-budget-quest)
+5. Set sebagai "Public" (free)
+6. JANGAN tick "Initialize with README"
+7. Klik "Create repository"
+
+8. Dalam VSCode, buka terminal dan run commands berikut SATU PER SATU:
+
+   git init
+   git add .
+   git commit -m "Initial commit"
+   git branch -M main
+   git remote add origin https://github.com/USERNAME/REPO-NAME.git
+   git push -u origin main
+
+   (Gantikan USERNAME dengan username GitHub anda)
+   (Gantikan REPO-NAME dengan nama repository yang anda buat)
+
+9. Code anda sekarang dah ada di GitHub!
+
+LANGKAH 3: Deploy dari Vercel
+------------------------------
+1. Pergi ke https://vercel.com/dashboard
+2. Klik "Add New..." > "Project"
+3. Klik "Import" pada repository game anda
+4. Vercel akan auto-detect settings (Vite framework)
+5. Klik "Deploy"
+6. Tunggu 1-2 minit untuk deployment selesai
+7. Anda akan dapat URL public (contoh: osh-budget-quest.vercel.app)
+8. Game sudah LIVE dan boleh share URL dengan sesiapa sahaja!
+
+LANGKAH 4: Update Game (Bila Ada Changes)
+------------------------------------------
+1. Bila anda edit code dalam VSCode
+2. Run commands dalam terminal:
+   
+   git add .
+   git commit -m "Update game"
+   git push
+
+3. Vercel akan AUTO-deploy perubahan baru
+4. Dalam 1-2 minit, website akan update automatically
+
+
+PILIHAN 2: DEPLOY MENGGUNAKAN NETLIFY
+======================================
+
+LANGKAH 1: Build Game untuk Production
+---------------------------------------
+1. Dalam terminal VSCode, run:
+   
+   npm run build
+
+2. Ini akan create folder "dist" dengan semua file production
+
+LANGKAH 2: Create Account Netlify
+----------------------------------
+1. Pergi ke https://www.netlify.com
+2. Klik "Sign up"
+3. Pilih "Sign up with GitHub" (mudah)
+4. Authorize Netlify
+
+LANGKAH 3: Deploy ke Netlify
+-----------------------------
+CARA 1 - Drag & Drop (Paling Mudah):
+1. Login ke Netlify
+2. Scroll ke bahagian "Sites"
+3. Drag & drop folder "dist" ke area yang bertanda
+   "Want to deploy a new site without connecting to Git?"
+4. Netlify akan upload dan deploy
+5. Siap! Anda dapat URL (contoh: random-name-123.netlify.app)
+
+CARA 2 - Connect dengan GitHub:
+1. Push code ke GitHub (ikut cara di Vercel)
+2. Dalam Netlify dashboard, klik "Add new site" > "Import existing project"
+3. Pilih "GitHub"
+4. Pilih repository anda
+5. Settings:
+   - Build command: npm run build
+   - Publish directory: dist
+6. Klik "Deploy site"
+7. Tunggu deployment selesai
+
+
+PILIHAN 3: DEPLOY MENGGUNAKAN GITHUB PAGES (100% Free)
+=======================================================
+
+LANGKAH 1: Install gh-pages Package
+------------------------------------
+1. Dalam terminal, run:
+   
+   npm install --save-dev gh-pages
+
+LANGKAH 2: Update package.json
+-------------------------------
+1. Buka file package.json
+2. Tambah line ini dalam "scripts":
+   
+   "predeploy": "npm run build",
+   "deploy": "gh-pages -d dist"
+
+3. Tambah line ini di TOP level (selepas "version"):
+   
+   "homepage": "https://USERNAME.github.io/REPO-NAME/",
+   
+   (Gantikan dengan username dan repo name anda)
+
+LANGKAH 3: Update vite.config.js
+---------------------------------
+1. Buka file vite.config.js
+2. Tambah base option:
+   
+   export default defineConfig({
+     plugins: [react()],
+     base: '/REPO-NAME/',
+   })
+
+LANGKAH 4: Deploy
+-----------------
+1. Pastikan code dah push ke GitHub
+2. Run dalam terminal:
+   
+   npm run deploy
+
+3. Tunggu proses selesai
+4. Pergi ke GitHub repository settings
+5. Klik "Pages" (sebelah kiri)
+6. Under "Source", pilih "gh-pages" branch
+7. Klik "Save"
+8. Game akan live di: https://USERNAME.github.io/REPO-NAME/
+
+
+================================================================================
+                         TROUBLESHOOTING TIPS
+================================================================================
+
+Masalah: "npm: command not found"
+----------------------------------
+Penyelesaian: Node.js tidak installed dengan betul
+- Install semula Node.js dari https://nodejs.org
+- Restart komputer selepas install
+
+Masalah: Port 5173 already in use
+----------------------------------
+Penyelesaian: Ada proses lain guna port tersebut
+- Close semua VSCode/terminal
+- Buka balik dan run "npm run dev" lagi
+ATAU
+- Dalam terminal: netstat -ano | findstr :5173
+- Tutup process yang guna port tersebut
+
+Masalah: Game tidak load dalam browser
+---------------------------------------
+Penyelesaian:
+- Clear browser cache (Ctrl + Shift + Delete)
+- Try browser lain (Chrome/Firefox/Edge)
+- Check console dalam browser (F12) untuk error messages
+
+Masalah: Build failed
+----------------------
+Penyelesaian:
+- Delete folder "node_modules" dan file "package-lock.json"
+- Run "npm install" semula
+- Run "npm run build" lagi
+
+
+================================================================================
+                            MAKLUMAT TAMBAHAN
+================================================================================
+
+Struktur Folder Game:
+---------------------
+game-iskandar/
+├── src/                    (Source code)
+│   ├── components/         (UI components)
+│   ├── data/               (Game data & constants)
+│   ├── hooks/              (Custom React hooks)
+│   ├── utils/              (Helper functions)
+│   ├── phaser/             (Phaser game layer)
+│   ├── App.jsx             (Main application)
+│   └── main.jsx            (Entry point)
+├── public/                 (Static assets)
+├── dist/                   (Production build - created by npm run build)
+├── node_modules/           (Dependencies - created by npm install)
+├── package.json            (Project configuration)
+└── vite.config.js          (Vite configuration)
+
+Commands Penting:
+-----------------
+npm install          - Install semua dependencies
+npm run dev          - Run development server
+npm run build        - Build untuk production
+npm run preview      - Preview production build
+
+URLs Platform:
+--------------
+- Vercel: https://vercel.com (Auto-deploy from GitHub)
+- Netlify: https://www.netlify.com (Drag & drop or GitHub)
+- GitHub Pages: Free hosting dengan GitHub account
+
+Support & Documentation:
+-------------------------
+- Vite: https://vitejs.dev
+- React: https://react.dev
+- Phaser: https://phaser.io
+
+
+================================================================================
+Selamat mencuba! Jika ada masalah, refer troubleshooting section di atas.
+================================================================================

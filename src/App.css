@@ -1,0 +1,293 @@
+#root {
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  text-align: center;
+}
+
+/* Game UI Animations */
+@keyframes slideInUp {
+  from {
+    opacity: 0;
+    transform: translateY(30px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes pulse {
+  0%, 100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(1.05);
+    opacity: 0.9;
+  }
+}
+
+@keyframes glow {
+  0%, 100% {
+    box-shadow: 0 0 5px rgba(255, 213, 79, 0.5), 0 0 10px rgba(255, 213, 79, 0.3);
+  }
+  50% {
+    box-shadow: 0 0 10px rgba(255, 213, 79, 0.8), 0 0 20px rgba(255, 213, 79, 0.5);
+  }
+}
+
+@keyframes badgePulse {
+  0%, 100% {
+    transform: scale(1);
+    box-shadow: 0 0 0 rgba(25, 118, 210, 0.4);
+  }
+  50% {
+    transform: scale(1.1);
+    box-shadow: 0 0 10px rgba(25, 118, 210, 0.6);
+  }
+}
+
+@keyframes playerIdle {
+  0%, 100% {
+    transform: translateY(0px);
+  }
+  50% {
+    transform: translateY(-3px);
+  }
+}
+
+@keyframes buttonPress {
+  0% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(0.95);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+@keyframes shimmer {
+  0% {
+    background-position: -200% center;
+  }
+  100% {
+    background-position: 200% center;
+  }
+}
+
+@keyframes checkpointPulse {
+  0%, 100% {
+    box-shadow: 0 0 8px rgba(255, 193, 7, 0.6), inset 0 0 8px rgba(255, 193, 7, 0.3);
+    transform: scale(1);
+  }
+  50% {
+    box-shadow: 0 0 16px rgba(255, 193, 7, 0.9), inset 0 0 12px rgba(255, 193, 7, 0.5);
+    transform: scale(1.05);
+  }
+}
+
+@keyframes wallUnlock {
+  0% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.5;
+    transform: scale(1.2);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(0.8);
+  }
+}
+
+@keyframes successPulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(67, 160, 71, 0.7);
+  }
+  70% {
+    box-shadow: 0 0 0 15px rgba(67, 160, 71, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(67, 160, 71, 0);
+  }
+}
+
+@keyframes warningPulse {
+  0%, 100% {
+    background-color: rgba(211, 47, 47, 0.15);
+  }
+  50% {
+    background-color: rgba(211, 47, 47, 0.3);
+  }
+}
+
+.game-objectives-card {
+  animation: slideInUp 0.6s ease-out;
+}
+
+.objective-row {
+  transition: all 0.3s ease;
+}
+
+.objective-row:hover {
+  transform: translateX(8px);
+  background-color: rgba(25, 118, 210, 0.05);
+  border-radius: 8px;
+  padding-left: 8px;
+  margin-left: -8px;
+}
+
+.objective-badge {
+  animation: badgePulse 2s ease-in-out infinite;
+}
+
+.game-tile {
+  transition: all 0.2s ease;
+}
+
+.game-tile:hover {
+  transform: scale(1.05);
+}
+
+.objective-tile {
+  animation: checkpointPulse 2s ease-in-out infinite;
+  position: relative;
+  overflow: hidden;
+}
+
+.objective-tile::before {
+  content: '';
+  position: absolute;
+  top: -50%;
+  left: -50%;
+  width: 200%;
+  height: 200%;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(255, 255, 255, 0.3),
+    transparent
+  );
+  animation: shimmer 3s infinite;
+}
+
+.player-character {
+  animation: playerIdle 2s ease-in-out infinite;
+  display: inline-block;
+}
+
+.game-button {
+  transition: all 0.2s ease;
+  cursor: pointer;
+}
+
+.game-button:hover {
+  transform: scale(1.05);
+  box-shadow: 0 0 15px rgba(67, 160, 71, 0.5);
+}
+
+.game-button:active {
+  animation: buttonPress 0.2s ease;
+}
+
+.dpad-button {
+  transition: all 0.15s ease;
+  cursor: pointer;
+}
+
+.dpad-button:hover {
+  box-shadow: 0 0 12px rgba(0, 0, 0, 0.4);
+  transform: scale(1.08);
+}
+
+.dpad-button:active {
+  transform: scale(0.95);
+}
+
+/* Enhanced Visual Styling */
+.stat-card {
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.95) 0%, rgba(245, 245, 245, 0.95) 100%);
+  border-radius: 12px;
+  padding: 16px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15), inset 0 1px 0 rgba(255, 255, 255, 0.6);
+  transition: all 0.3s ease;
+}
+
+.stat-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.6);
+}
+
+.progress-bar-container {
+  background: rgba(0, 0, 0, 0.1);
+  border-radius: 12px;
+  overflow: hidden;
+  height: 24px;
+  position: relative;
+  box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+.progress-bar-fill {
+  height: 100%;
+  transition: width 0.5s ease, background-color 0.3s ease;
+  border-radius: 12px;
+  position: relative;
+  overflow: hidden;
+}
+
+.progress-bar-fill::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(255, 255, 255, 0.4),
+    transparent
+  );
+  animation: shimmer 2s infinite;
+}
+
+.glass-card {
+  background: rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(10px);
+  border-radius: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+}
+
+.neon-text {
+  text-shadow: 0 0 10px currentColor, 0 0 20px currentColor, 0 0 30px currentColor;
+  font-weight: bold;
+}
+
+.game-grid-container {
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3), 0 0 60px rgba(25, 118, 210, 0.2);
+  border-radius: 8px;
+  overflow: hidden;
+  border: 3px solid rgba(25, 118, 210, 0.4);
+}
+
+.checkpoint-completed {
+  animation: successPulse 0.6s ease-out;
+}
+
+.time-warning {
+  animation: warningPulse 1s ease-in-out infinite;
+}
