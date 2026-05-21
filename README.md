@@ -20,6 +20,10 @@ Live gameplay logic is driven by React state; Phaser renders the grid, player, c
 - ESLint (React hooks + refresh plugins)
 - Web Audio API for SFX
 
+## Gameplay
+
+![Demo](demo.gif)
+
 ## Project Structure
 
 ```
